@@ -596,7 +596,7 @@ sub cmd_upload($$)
       my $r = $prj->bare_git;
       my $rev = $r->rev_parse($br);
       if (not defined $rev) {
-        push @$err, "$prj->{name} has no branch named $br";
+        push @$err, "$prj->{path} has no branch named $br";
       }
       return $rev;
     }
@@ -618,14 +618,14 @@ sub cmd_upload($$)
 
     my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
     if (not @commits) {
-      push @$err, "$prj->{name}: $src_br is not derived from $rem_br";
+      push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
       return;
     }
 
     # check the number of changes for this branch
     my $num_changes = scalar(@commits);
     if ($num_changes > 1) {
-      push @warn, "$prj->{name}: branch $src_br has more than one ($num_changes) change for $rem_br";
+      push @warn, "$prj->{path}: branch $src_br has more than one ($num_changes) change for $rem_br";
       $approve = 1;
     }
 
@@ -633,7 +633,7 @@ sub cmd_upload($$)
     foreach my $c (@commits) {
       my @cmt = $r->cat_object($c);
       if (not grep /^Change-Id:/, @cmt) {
-        push @$err, "$prj->{name}: branch $src_br has commits without a change id (Change-Id)";
+        push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
         return;
       }
     }
