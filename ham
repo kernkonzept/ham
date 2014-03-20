@@ -209,7 +209,7 @@ package Repo {
     }
 
     my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-    return if $head eq $branch;
+    return if defined $head and $head eq $branch;
 
     my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
     my @cerr = $cmd->stderr->getlines;
