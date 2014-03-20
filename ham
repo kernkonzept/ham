@@ -568,6 +568,7 @@ $subcmds{remote} = { sub => {
              desc => 'add a repository remote for to each git repo using <url> as prefix' } } };
 
 
+###### upload ####################################################
 sub cmd_upload($$)
 {
   my $opts = { src_branch => 'HEAD' };
