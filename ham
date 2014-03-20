@@ -141,7 +141,7 @@ package Git::Repository::Plugin::KK {
     # skip the invocant when invoked as a class method
     return undef if !ref $_[0];
     my $r = shift;
-    my $res = $r->run('rev-parse', @_, { quiet => 1, fatal => [-128 ]});
+    my $res = $r->run('rev-parse', '--revs-only', @_, { quiet => 1, fatal => [-128 ]});
     return undef unless defined $res;
     return undef unless $res ne '';
     return $res;
@@ -200,7 +200,7 @@ package Repo {
   {
     my $r = shift;
     my @args = @_;
-    my $branch = (grep (not /^-/), @args)[0];
+    my $branch = (grep { not /^-/ } @args)[0];
 
     my $git = $r->git;
     if (not $git) {
@@ -208,7 +208,7 @@ package Repo {
       return;
     }
 
-    my $head = $git->run('rev-parse', '--abbrev-ref', 'HEAD', {quiet => 1, fatal => [-128]});
+    my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
     return if $head eq $branch;
 
     my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
@@ -594,7 +594,7 @@ sub cmd_upload($$)
       my $prj = shift;
       my $br = shift;
       my $r = $prj->bare_git;
-      my $rev = $r->rev_parse('--revs-only', $br);
+      my $rev = $r->rev_parse($br);
       if (not defined $rev) {
         push @$err, "$prj->{name} has no branch named $br";
       }
@@ -682,7 +682,7 @@ sub cmd_upload($$)
     if ($opts->{topic}) {
       push @attrs, "topic=$opts->{topic}";
     } elsif ($opts->{add_branch_as_topic}) {
-      $src_br = $r->rev_parse('--abbrev-ref', '--revs-only', $src_br) if $src_br eq 'HEAD';
+      $src_br = $r->rev_parse('--abbrev-ref', $src_br) if $src_br eq 'HEAD';
       push @attrs, "topic=$src_br";
     }
     push @attrs, @base_attr;
