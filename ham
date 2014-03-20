@@ -15,7 +15,7 @@ use Hammer::Process_queue;
 use Hammer::Subcommand;
 use Hammer::Project;
 
-use XML::Simple;
+use XML::Mini::Document;
 use File::Spec::Functions qw(catdir);
 use File::Spec;
 use File::Path qw(make_path);
@@ -275,6 +275,36 @@ sub manifest_prj
 }
 
 
+sub preprocess_xml
+{
+  my $m = shift;
+  my %opts = @_;
+
+  sub gen_hash($$$)
+  {
+    my $in = shift;
+    my $key = shift;
+    my $node = shift;
+    $in = [ $in ] unless ref $in eq 'ARRAY';
+    my $out = {};
+    foreach my $e (@$in) {
+      my $k = $e->{$key};
+      if (not defined $k) {
+        print STDERR "error: missing '$key' attribute in <$node ...> node\n";
+        next;
+      }
+      $out->{$k} = $e;
+    }
+    return $out;
+  }
+
+  while (my ($k, $v) = each %{$opts{KeyAttr}}) {
+    if (defined $m->{$k}) {
+      $m->{$k} = gen_hash($m->{$k}, $v, $k);
+    }
+  }
+}
+
 # load all projects, including the manifest
 sub load_projects
 {
@@ -285,9 +315,12 @@ sub load_projects
   }
 
   $file = repo_manifest();
-  my $manifest = XMLin($file,
-    ForceArray => ['project', 'remote'],
-    KeyAttr => { project => "+name", remote => "+name" });
+  my $xml = XML::Mini::Document->new();
+  $xml->fromFile($file);
+  my $manifest = $xml->toHash->{manifest};
+  preprocess_xml($manifest, KeyAttr => { project => "name", remote => "name" });
+
+  #print Dumper($manifest); exit(5);
 
   my $projects = $manifest->{project};
   foreach my $r (values %$projects) {
