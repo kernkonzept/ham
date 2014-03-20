@@ -196,6 +196,80 @@ package Repo {
     $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path);
   }
 
+  package Stream {
+    sub new
+    {
+      shift;
+      my $fh= shift;
+      my $self = {};
+      $self->{buffer} = '';
+      $self->{fh} = $fh;
+      $self->{sep} = "\n\r";
+      #my $flags = fcntl($fh, F_GETFL, 0);
+      #fcntl($fh, F_SETFL, $flags | O_NONBLOCK);
+      return bless $self, 'Stream';
+    }
+
+    sub process($$@)
+    {
+      my $self = shift;
+      my $func = shift;
+      my @args = @_;
+      my $buffer = \$self->{buffer};
+      my $fh = $self->{fh};
+      my $sep = $self->{sep};
+      while (1) {
+        my $buf = '';
+        my $n = sysread($fh, $buf, 1024);
+        $$buffer .= $buf;
+        if ($$buffer =~ s/([^\r\n]+)[\r\n]//) {
+          $func->($1, @args);
+        } elsif ($n == 0) {
+          $func->($$buffer, @args);
+          $$buffer = '';
+          return;
+        }
+      }
+    }
+  };
+
+  sub _fetch_progress($$)
+  {
+    local $_ = shift;
+    my $self = shift;
+    if (/^(remote: Finding sources:\s*[0-9]+%.*)$/) {
+      print STDERR "\r$self->{name}: $1\e[K";
+    } elsif (/^(Receiving object: .*)$/) {
+      print STDERR "\r$self->{name}: $1\e[K";
+    } elsif (/^(Resolving deltas: .*)$/) {
+      print STDERR "\r$self->{name}: $1\e[K";
+    }
+    #print "$_\n";
+  }
+
+  sub clone($$$)
+  {
+    my $self = shift;
+    my $remote_name = shift;
+    my $url = shift;
+    my $cmd = Git::Repository->command('clone', '--origin', $remote_name,
+      '--progress', '--', $url, $self->abs_path, { quiet => 1});
+
+    my $b = Stream->new($cmd->stderr);
+    $b->process(\&_fetch_progress, $self);
+    $cmd->final_output;
+    $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path);
+  }
+
+  sub fetch($@)
+  {
+    my $self = shift;
+    my $cmd = $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 });
+    my $b = Stream->new($cmd->stderr);
+    $b->process(\&_fetch_progress, $self);
+    return $cmd->final_output;
+  }
+
   sub checkout($@)
   {
     my $r = shift;
@@ -210,6 +284,7 @@ package Repo {
 
     my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
     return if defined $head and $head eq $branch;
+    $head = '' unless defined $head;
 
     my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
     my @cerr = $cmd->stderr->getlines;
@@ -398,7 +473,7 @@ sub sync_repo($$)
   if ($repo->is_git_repo) {
     $r = $repo->bare_git;
     print STDERR "fetch $repo->{name} from $remote_name";
-    $r->run('fetch', $remote_name, {quiet => 1});
+    $repo->fetch($remote_name);
   } else {
     print "run: ($repo->{path}) git clone $remote_name\n";
     my $url = $repo->{_remote}->{fetch};
@@ -406,11 +481,15 @@ sub sync_repo($$)
     $url .= $repo->{name};
     $r = $repo->init;
     $r->run('remote', 'add', $remote_name, $url);
-    $r->run('fetch', '--progress', $remote_name, {quiet => 1});
+    $repo->fetch($remote_name);
 
-    my @res = grep s/^\s+HEAD branch:\s+//, $r->run('remote', 'show', $remote_name);
-    if (@res and defined $res[0]) {
-      $repo->checkout('--track', $remote_name.'/'.$res[0]);
+    my $revision = $repo->{revision};
+    if (not defined $revision) {
+      push @$err, "$repo->{name} @ $repo->{path} has no revision to checkout";
+    } elsif (not $r->rev_parse("$remote_name/$revision")) {
+      push @$err, "$repo->{name} @ $repo->{path} has no branch named $revision";
+    } else {
+      $repo->checkout('-b', $revision, '--track', $remote_name.'/'.$revision);
     }
   }
 
