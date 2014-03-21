@@ -721,14 +721,12 @@ sub load_repos
 
 sub foreach_repo_r($$@)
 {
-  my $func = shift;
-  my $repos = shift;
-  my $progress = shift;
+  my ($func, $repos, $progress, @args) = @_;
   my $cnt = 1;
   my $total = scalar(@$repos);
   foreach my $r (@$repos) {
     print STDERR "\r\e[K($cnt/$total) " if $progress;
-    $func->($r, $info, $err);
+    $func->($r, @args);
     $cnt++;
   }
   print STDERR "\n" if $progress and $total;
@@ -758,12 +756,10 @@ sub sorted_and_filtered_repos
 
 sub foreach_repo($@)
 {
-  my $func = shift;
-  my $prjs = shift;
+  my ($func, $prjs, $progress, @args) = @_;
   $prjs = \@ARGV unless defined $prjs;
-  my $progress = shift;
 
-  foreach_repo_r($func, sorted_and_filtered_repos($prjs), $progress);
+  foreach_repo_r($func, sorted_and_filtered_repos($prjs), $progress, @args);
   print_errors();
 }
 
@@ -856,8 +852,8 @@ $subcmds{sync} = { cmd => \&cmd_repo_sync, use => '[<project>...]',
                    desc => 'checkout/update all projects' };
 sub forall
 {
-  my ($what) = @_;
-  foreach_repo(eval '\&Project::'.$what, \@ARGV);
+  my ($what, @args) = @_;
+  foreach_repo(eval '\&Project::'.$what, \@ARGV, 0, @args);
 }
 
 ###### status #########################################
@@ -908,10 +904,7 @@ sub cmd_checkout
 {
   my $branch = shift @ARGV;
   print_usage(@_) unless defined $branch;
-  foreach_repo(sub {
-      my ($r, $info, $err) = @_;
-      $r->checkout($branch);
-    }, \@ARGV);
+  forall('checkout', $branch);
 }
 
 $subcmds{checkout} = { cmd => \&cmd_checkout, use => '<branch> [<project>...]',
@@ -928,10 +921,7 @@ sub cmd_start
   get_options($_[0], $_[1], 'base|t=s' => \$start);
   push @args, $start if defined $start and $start ne '';
 
-  foreach_repo(sub {
-    $_[0]->checkout(@args);
-  }, \@ARGV);
-
+  forall('checkout', @args);
 }
 
 $subcmds{start} = { cmd => \&cmd_start, use => '<branch> [-t|--base <start point>] [<project>...]',
