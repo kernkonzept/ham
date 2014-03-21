@@ -662,6 +662,20 @@ package Project {
       return $self->fetch($remote_name);
     }
   }
+
+  ###### status #########################################
+  sub status($)
+  {
+    my $self = shift;
+    my $r = $self->git($err);
+    return unless $r;
+    my @s = $r->run(status => '--porcelain', '-b');
+    if ($s[0] =~ /##.*(ahead|behind)/ or scalar(@s) > 1) {
+      print "project: $self->{name} at ".$self->abs_path."\n";
+      print join("\n", @s)."\n";
+    }
+  }
+
 }
 ##########################################################################
 
@@ -829,40 +843,25 @@ sub cmd_repo_sync($$)
   my $repos = sorted_and_filtered_repos(\@ARGV);
   my $q = Process_queue->new();
 
-  foreach_repo_r(sub {
-      my $r = shift;
-      $q->queue(sub { $r->sync; });
-  }, $repos);
-
+  foreach my $r (@$repos) { $q->queue(sub { $r->sync; }); }
   $q->work;
 
   print_errors();
   print STDERR "Preparing gits .....................\n";
 
-  foreach_repo_r(\&Project::prepare, $repos);
+  $_->prepare foreach @$repos;
 }
 
 $subcmds{sync} = { cmd => \&cmd_repo_sync, use => '[<project>...]',
                    desc => 'checkout/update all projects' };
-
-###### status #########################################
-sub repo_status($)
+sub forall
 {
-  my $repo = shift;
-  die "error: repo $repo->{name} mssing at $repo->{path}\n" unless $repo->is_git_repo;
-  my $r = $repo->git;
-  my @s = $r->run(status => '--porcelain', '-b');
-  if ($s[0] =~ /##.*(ahead|behind)/ or scalar(@s) > 1) {
-    print "project: $repo->{name} at ".$repo->abs_path."\n";
-    print join("\n", @s)."\n";
-  }
+  my ($what) = @_;
+  foreach_repo(eval '\&Project::'.$what, \@ARGV);
 }
 
-
-sub cmd_repo_status($$)
-{ foreach_repo(\&repo_status, \@ARGV); }
-
-$subcmds{status} = { cmd => \&cmd_repo_status, use => '[<project>...]',
+###### status #########################################
+$subcmds{status} = { cmd => sub { forall('status') }, use => '[<project>...]',
                      desc => 'show the status of all projects' };
 
 
