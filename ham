@@ -8,7 +8,8 @@ use File::Path qw(make_path);
 use Git::Repository;
 use Getopt::Long;
 use URI;
-
+use IO::Select;
+use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
 my $prog = 'ham';
 my %subcmds = ();
@@ -129,6 +130,269 @@ sub repo_config() { get_repo_dir().'/config' }
 my $info = [];
 my $err  = [];
 
+## stream to be processed by a stream processor
+package Stream {
+  sub new($$$@)
+  {
+    shift;
+    my $fh = shift;
+    my $cb = shift;
+    my @args = @_;
+    my $self = {};
+    $self->{buffer} = '';
+    $self->{fh} = $fh;
+    $self->{cb} = $cb;
+    $self->{sep} = "\n\r";
+    $self->{args} = \@args;
+    my $flags = fcntl($fh, Fcntl::F_GETFL, 0);
+    fcntl($fh, Fcntl::F_SETFL, $flags | Fcntl::O_NONBLOCK);
+    return bless $self, 'Stream';
+  }
+
+  sub process($)
+  {
+    my $self = shift;
+    my $func = shift;
+    my @args = @_;
+    my $buffer = \$self->{buffer};
+    my $fh = $self->{fh};
+    my $sep = $self->{sep};
+
+    my $buf = '';
+    my $n = sysread($fh, $buf, 1024);
+    $$buffer .= $buf;
+    if ($$buffer =~ s/([^\r\n]+)[\r\n]//) {
+      $self->{cb}->(0, $1, @{$self->{args}});
+      return 1;
+    } elsif ($n == 0) {
+      $self->{cb}->(1, $$buffer, @{$self->{args}});
+      $$buffer = '';
+      $self->{done} = 1;
+      return 0;
+    }
+  }
+};
+
+
+## A stream processor processes a set of stream and
+## runs callbacks when there is new input
+package Stream::Process {
+
+  ## create a new stream processor
+  sub new
+  {
+    my $s = { streams => [] };
+    return bless $s, 'Stream::Process';
+  }
+
+  ## add new stream to the processor
+  sub add($@)
+  {
+    my $self = shift;
+    foreach my $s (@_) {
+      push @{$self->{streams}}, $s unless $s->{done};
+    }
+  }
+
+  ## delete a stream from the processor
+  sub del($$)
+  {
+    my ($self, $s) = @_;
+    @{$self->{streams}} = grep { $_ != $s } @{$self->{streams}};
+  }
+
+  ## delete all closed stream from the processor
+  sub gc($)
+  {
+    my ($self) = @_;
+    @{$self->{streams}} = grep { not $_->{done} } @{$self->{streams}};
+  }
+
+  ## are there any sreams left ?
+  sub done($)
+  {
+    my ($self) = @_;
+    return not scalar(@{$self->{streams}});
+  }
+
+  ## do stream processing
+  sub process($)
+  {
+    my ($self) = @_;
+
+    return undef if $self->done;
+
+    my @handles = map { $_->{fh} } @{$self->{streams}};
+
+    while (my @ready = IO::Select->new(@handles)->can_read) {
+      foreach my $h (@ready) {
+        my ($s) = grep { $_->{fh} == $h } @{$self->{streams}};
+        if (not $s->process) {
+          # stream closed ...
+          $self->gc;
+          return $s;
+        }
+      }
+    }
+  }
+}
+
+## queue to handle parallel work
+package Process_queue {
+
+  ## a running job
+  package Process {
+    sub new
+    {
+      shift;
+      my $cmd = shift;
+      my %opts = @_;
+      my $self = {};
+
+      $self->{command} = $cmd;
+      $self->{done} = 0;
+
+      my @args = ();
+      if (defined $opts{args}) {
+        @args = ($opts{args});
+        @args = @{$opts{args}} if ref $opts{args} eq 'ARRAY';
+      }
+
+      my $finish_cb = $opts{finish};
+
+      my $finish = sub {
+        my $what = shift;
+        delete $self->{$what};
+        if (++$self->{done} == 2) {
+          $finish_cb->($self, @args) if defined $finish_cb;
+          $cmd->close;
+          delete $self->{command};
+        }
+      };
+
+      my $out_cb = $opts{out};
+      my $err_cb = $opts{err};
+      %opts = ();
+
+      $self->{stdout} = Stream->new($cmd->stdout, sub {
+          my ($finished, $data) = @_;
+          $out_cb->($self, $data, @args) if $out_cb;
+          $finish->('stdout') if $finished;
+        });
+      $self->{stderr} = Stream->new($cmd->stderr, sub {
+          my ($finished, $data) = @_;
+          $err_cb->($self, $data, @args) if $err_cb;
+          $finish->('stderr') if $finished;
+        });
+
+      return bless $self, 'Process';
+    }
+
+    sub stdout { $_[0]->{stdout} }
+    sub stderr { $_[0]->{stderr} }
+    sub done   { $_[0]->{done} == 2 }
+  }
+
+
+  ## create a new work queue
+  sub new
+  {
+    shift;
+    my %o = @_;
+    $o{max} = 8 unless defined $o{max};
+    return bless {
+      finish   => $o{finish},
+      max      => $o{max},
+      queue    => [],
+      running  => [],
+      sp       => Stream::Process->new,
+    }, 'Process_queue';
+  }
+
+
+  ## test if the queue is fully loaded (max numbber of runnning processes)
+  sub full($)
+  {
+    my $self = shift;
+    return scalar(@{$self->{running}}) >= $self->{max};
+  }
+
+  ## queue new work
+  sub queue($$@)
+  {
+    my ($self, $command, %opts) = @_;
+    push @{$self->{queue}}, $command;
+  }
+
+  ## run all the queued work
+  sub work($)
+  {
+    my $self = shift;
+    while (scalar(@{$self->{queue}})) {
+      $self->_run_next unless $self->full;
+      $self->{sp}->process;
+    }
+
+    while ($self->{sp}->process) {}
+  }
+
+  ## private: update the progress indicator
+  sub _update_progress
+  {
+    my $self = shift;
+    my $txt = '';
+    foreach my $r (@{$self->{running}}) {
+      $txt .= '['.$r->{err_msg}.']' if defined $r->{err_msg};
+    }
+
+    print STDERR "\r$txt\e[K" if $txt ne '';
+  }
+
+  ## private functions follow ...
+  ## private: run the next job
+  sub _run_next($)
+  {
+    my $self = shift;
+    my $next = shift @{$self->{queue}};
+    return 0 unless defined $next;
+
+    my ($cmd, %o) = $next->();
+
+    sub parse_stream($@)
+    {
+      my ($what, $proc, $data, $self, $opts) = @_;
+      my $r = (grep { $_->{proc} == $proc } @{$self->{running}})[0];
+      my @args = ($opts->{args});
+      @args = @{$opts->{args}} if defined $opts->{args} and ref $opts->{args} eq 'ARRAY';
+      my $info = $opts->{$what}->($data, @args) if defined $opts->{$what};
+      $r->{$what.'_msg'} = $info if defined $info;
+      $self->_update_progress if defined $info;
+    }
+
+    my %popts = (
+      args   => [ $self, { %o } ],
+      finish => sub {
+        my ($proc, $self, $opts) = @_;
+        $self->{running} = [ grep { $_->{proc} != $proc } @{$self->{running}} ];
+        my @args = ($opts->{args});
+        @args = @{$opts->{args}} if defined $opts->{args} and ref $opts->{args} eq 'ARRAY';
+        my $info = $opts->{finish}->($proc, @args) if defined $opts->{finish};
+        if (defined $info) {
+          print STDERR "\r$info\e[K\n";
+          $self->_update_progress;
+        }
+      },
+
+      err => sub { parse_stream('err', @_); },
+      out => sub { parse_stream('out', @_); },
+    );
+    my $e = Process->new($cmd, %popts);
+    push @{$self->{running}}, { proc => $e };
+    $self->{sp}->add($e->stdout, $e->stderr);
+    return 1;
+  }
+}
+
 #################################
 # Git::Repository::Plugin::KK
 package Git::Repository::Plugin::KK {
@@ -159,9 +423,11 @@ package Git::Repository::Plugin::KK {
 Git::Repository::Plugin::KK->install();
 
 ##########################################################################
-# Repo package
-package Repo {
+# Project package
+package Project {
+  use File::Spec::Functions qw(catdir splitdir);
 
+  ## get the absolute base path to the work tree of this project
   sub abs_path($)
   {
     my $self = shift;
@@ -169,26 +435,70 @@ package Repo {
     return "$base/$self->{path}";
   }
 
-  sub git($)
+  sub repo_dir_rel($$)
   {
-    my $self = shift;
-    return $self->{_repo} if defined $self->{_repo};
-    return undef unless -d $self->abs_path.'/.git';
-    $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git',
-                                                                work_tree => $self->abs_path);
+    my ($self, $sub) = @_;
+    $sub = $self->{path} unless defined $sub;
+    $sub = substr $sub, 1 if substr($sub, 0, 1) eq '/';
+    my @d = splitdir($sub);
+    my $pfx = $repo_subdir;
+    $pfx = catdir('..', $pfx) foreach @d;
+    return $pfx;
   }
 
-  sub bare_git($)
-  {
-    my $self = shift;
-    return $self->{_bare_repo} if defined $self->{_bare_repo};
-    return undef unless -d $self->abs_path.'/.git';
-    $self->{_bare_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git');
-  }
-
+  ## test if the work tree diretory exists
   sub exists($) { return -e $_[0]->abs_path; }
+
+  ## check forthe existence of the '.git' directory
   sub is_git_repo($) { return -e $_[0]->abs_path.'/.git'; }
 
+  ## get the Git::Repository object for this project (incl. a work tree)
+  sub git
+  {
+    my $self = shift;
+    my $err = shift;
+
+    return $self->{_repo} if defined $self->{_repo};
+
+    if (not $self->is_git_repo) {
+      push @$err, "$self->{path} is not a git repository (.git missing)" if defined $err;
+      return undef;
+    }
+
+    my $r = $self->{_bare_repo} = $self->{_repo}
+          = Git::Repository->new(git_dir => $self->abs_path.'/.git',
+                                 work_tree => $self->abs_path);
+    if (not defined $r and defined $err) {
+      push @$err, "$self->{path} is not a valid git repository";
+      return undef;
+    }
+
+    return $r;
+  }
+
+  ## get the Git::Repository object for this project (bare)
+  sub bare_git
+  {
+    my $self = shift;
+    my $err = shift;
+    return $self->{_bare_repo} if defined $self->{_bare_repo};
+
+    if (not $self->is_git_repo) {
+      push @$err, "$self->{path} is not a git repository (.git missing)" if defined $err;
+      return undef;
+    }
+
+    my $r = $self->{_bare_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git');
+     if (not defined $r and defined $err) {
+      push @$err, "$self->{path} is not a valid git repository";
+      return undef;
+    }
+
+    return $r;
+  }
+
+
+  ## initialize the project work tree (.git)
   sub init($)
   {
     my $self = shift;
@@ -196,80 +506,101 @@ package Repo {
     $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path);
   }
 
-  package Stream {
-    sub new
-    {
-      shift;
-      my $fh= shift;
-      my $self = {};
-      $self->{buffer} = '';
-      $self->{fh} = $fh;
-      $self->{sep} = "\n\r";
-      #my $flags = fcntl($fh, F_GETFL, 0);
-      #fcntl($fh, F_SETFL, $flags | O_NONBLOCK);
-      return bless $self, 'Stream';
+  ## do a conditional checkout for sync
+  sub sync_checkout
+  {
+    my $self = shift;
+    my $git = $self->git($err);
+    return 0 unless defined $git;
+
+    my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
+
+    # return if we have already a valid checkout, don't touch the working copy
+    return 1 if defined $head;
+
+    my $revision = $self->{revision};
+    print STDERR "checkout $self->{name} @ $self->{path} ($revision)\n";
+    if (not defined $revision) {
+      push @$err, "$self->{name} @ $self->{path} has no revision to checkout";
+      return 0;
     }
 
-    sub process($$@)
-    {
-      my $self = shift;
-      my $func = shift;
-      my @args = @_;
-      my $buffer = \$self->{buffer};
-      my $fh = $self->{fh};
-      my $sep = $self->{sep};
-      while (1) {
-        my $buf = '';
-        my $n = sysread($fh, $buf, 1024);
-        $$buffer .= $buf;
-        if ($$buffer =~ s/([^\r\n]+)[\r\n]//) {
-          $func->($1, @args);
-        } elsif ($n == 0) {
-          $func->($$buffer, @args);
-          $$buffer = '';
-          return;
-        }
-      }
+    if (not defined $self->{_remote} or not defined $self->{_remote}->{name}) {
+      push @$err, "$self->{name} @ $self->{path} has no valid remote";
+      return 0;
     }
-  };
+
+    my $remote_name = $self->{_remote}->{name};
+    if (not $git->rev_parse("$remote_name/$revision")) {
+      push @$err, "$self->{name} @ $self->{path} has no branch named $revision";
+      return 0;
+    }
+
+    $self->checkout('-b', $revision, '--track', $remote_name.'/'.$revision);
+    return 1;
+  }
+
+  ## prepare the git repo after sync, incl. checkout
+  sub prepare($)
+  {
+    my $self = shift;
+    return 0 unless $self->sync_checkout;
+    my $git = $self->bare_git;
+    if (defined $self->{_remote}->{review} and $self->{_remote}->{review} ne '') {
+      my $hooks = $git->git_dir.'/hooks';
+      if (not -e "$hooks/commit-msg") {
+        make_path($hooks) unless -d $hooks;
+        my $base = ::repo_base();
+        if (index($hooks, $base) != 0) {
+          push @$err, "$hooks is not within our repo at $base";
+          return 0;
+        }
+
+        my $rel_hooks = $self->repo_dir_rel(substr $hooks, length($base));
+        symlink(catdir($rel_hooks, "hooks/commit-msg"), "$hooks/commit-msg")
+          or push @$err, "fatal: link $hooks/commit-msg: $!";
+      }
+
+      $git->run(config => '--bool', 'gerrit.createChangeId', 'true');
+    } else {
+      $git->run(config => '--bool', 'gerrit.createChangeId', 'false');
+    }
+    return 1;
+  }
+
 
   sub _fetch_progress($$)
   {
     local $_ = shift;
     my $self = shift;
-    if (/^(remote: Finding sources:\s*[0-9]+%.*)$/) {
-      print STDERR "\r$self->{name}: $1\e[K";
-    } elsif (/^(Receiving object: .*)$/) {
-      print STDERR "\r$self->{name}: $1\e[K";
-    } elsif (/^(Resolving deltas: .*)$/) {
-      print STDERR "\r$self->{name}: $1\e[K";
+    if (/^remote: Finding sources:\s*([0-9]+%).*$/) {
+      return "$self->{name}: $1";
+    } elsif (/^Receiving object:\s*([0-9]+%).*$/) {
+      return "$self->{name}: $1";
+    } elsif (/^Resolving deltas:\s*([0-9]+%).*$/) {
+      return "$self->{name}: $1";
     }
-    #print "$_\n";
+    return undef;
   }
 
-  sub clone($$$)
+  sub _collect($$)
   {
+    local $_ = shift;
     my $self = shift;
-    my $remote_name = shift;
-    my $url = shift;
-    my $cmd = Git::Repository->command('clone', '--origin', $remote_name,
-      '--progress', '--', $url, $self->abs_path, { quiet => 1});
-
-    my $b = Stream->new($cmd->stderr);
-    $b->process(\&_fetch_progress, $self);
-    $cmd->final_output;
-    $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path);
+    push @{$self->{output}}, $_;
   }
 
   sub fetch($@)
   {
     my $self = shift;
-    my $cmd = $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 });
-    my $b = Stream->new($cmd->stderr);
-    $b->process(\&_fetch_progress, $self);
-    return $cmd->final_output;
+    return (
+      $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 }),
+      out => \&_collect, err => \&_fetch_progress, args => $self,
+      finish => sub {"done fetching $self->{name}" }
+    );
   }
 
+  ## checkout the work tree
   sub checkout($@)
   {
     my $r = shift;
@@ -288,6 +619,7 @@ package Repo {
 
     my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
     my @cerr = $cmd->stderr->getlines;
+
     if (grep /invalid reference: $branch/, @cerr) {
       push @$info, "$r->{name} has no refernece $branch, stay at the previous head ($head)";
       return;
@@ -306,6 +638,28 @@ package Repo {
       chomp(@cerr);
       push @$err, @cerr;
       return;
+    }
+  }
+
+  ## sync #############################################
+  sub sync($)
+  {
+    my $self = shift;
+    my $remote_name = $self->{_remote}->{name};
+    my $r;
+    ::make_path($self->abs_path) unless $self->exists;
+    if ($self->is_git_repo) {
+      $r = $self->bare_git;
+      #print STDERR "fetch $self->{name} from $remote_name\n";
+      return $self->fetch($remote_name);
+    } else {
+      #print "run: ($self->{path}) git clone $remote_name\n";
+      my $url = $self->{_remote}->{fetch};
+      $url .= '/' unless substr($url, -1, 1) eq '/';
+      $url .= $self->{name};
+      $r = $self->init;
+      $r->run('remote', 'add', $remote_name, $url);
+      return $self->fetch($remote_name);
     }
   }
 }
@@ -339,7 +693,7 @@ sub load_repos
     }
 
     $r->{_remote} = $manifest->{remote}->{$r->{remote}};
-    bless $r,'Repo';
+    bless $r,'Project';
   }
 
   foreach my $r (values %{$manifest->{remote}}) {
@@ -463,50 +817,6 @@ $subcmds{init} = { cmd => \&cmd_repo_init, use => '<repos dat>',
                    desc => "initialize $prog repo in the curent directory" };
 
 
-###### sync #############################################
-sub sync_repo($$)
-{
-  my $repo = shift;
-  my $remote_name = $repo->{_remote}->{name};
-  my $r;
-  make_path($repo->abs_path) unless $repo->exists;
-  if ($repo->is_git_repo) {
-    $r = $repo->bare_git;
-    print STDERR "fetch $repo->{name} from $remote_name";
-    $repo->fetch($remote_name);
-  } else {
-    print "run: ($repo->{path}) git clone $remote_name\n";
-    my $url = $repo->{_remote}->{fetch};
-    $url .= '/' unless substr($url, -1, 1) eq '/';
-    $url .= $repo->{name};
-    $r = $repo->init;
-    $r->run('remote', 'add', $remote_name, $url);
-    $repo->fetch($remote_name);
-
-    my $revision = $repo->{revision};
-    if (not defined $revision) {
-      push @$err, "$repo->{name} @ $repo->{path} has no revision to checkout";
-    } elsif (not $r->rev_parse("$remote_name/$revision")) {
-      push @$err, "$repo->{name} @ $repo->{path} has no branch named $revision";
-    } else {
-      $repo->checkout('-b', $revision, '--track', $remote_name.'/'.$revision);
-    }
-  }
-
-  if (defined $repo->{_remote}->{review} and $repo->{_remote}->{review} ne '') {
-    my $hooks = $r->git_dir.'/hooks';
-    if (not -e "$hooks/commit-msg") {
-      make_path($hooks) unless -d $hooks;
-      symlink(get_repo_dir()."/hooks/commit-msg", "$hooks/commit-msg")
-        or push @$err, "fatal: link $hooks/commit-msg: $!";
-    }
-
-    $r->run(config => '--bool', 'gerrit.createChangeId', 'true');
-  } else {
-    $r->run(config => '--bool', 'gerrit.createChangeId', 'false');
-  }
-}
-
 sub cmd_repo_sync($$)
 {
   # update manifest repo, if there is any
@@ -515,7 +825,21 @@ sub cmd_repo_sync($$)
     $r->run(pull => 'origin');
   }
   place_commit_msg_hook();
-  foreach_repo(\&sync_repo, \@ARGV, 1);
+
+  my $repos = sorted_and_filtered_repos(\@ARGV);
+  my $q = Process_queue->new();
+
+  foreach_repo_r(sub {
+      my $r = shift;
+      $q->queue(sub { $r->sync; });
+  }, $repos);
+
+  $q->work;
+
+  print_errors();
+  print STDERR "Preparing gits .....................\n";
+
+  foreach_repo_r(\&Project::prepare, $repos);
 }
 
 $subcmds{sync} = { cmd => \&cmd_repo_sync, use => '[<project>...]',
