@@ -6,7 +6,6 @@ use XML::Simple;
 use File::Spec;
 use File::Path qw(make_path);
 use Git::Repository;
-use Getopt::Long;
 use URI;
 use IO::Select;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
@@ -46,7 +45,148 @@ sub _print_usage
     } else {
       my $n = "$c ";
       $n = '' if $c eq '.default';
-      print $out "  $cmd $n$d->{use}\n  \t\t$d->{desc}\n";
+      my ($usage, $options) = $d->{opt}->usage("$cmd $n");
+      my $description = $d->{desc};
+format USAGE =
+  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  $usage
+~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            $usage
+.
+format DESCR =
+~~      ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        $description
+.
+      local $~ = 'USAGE';
+      local $: = " \n";
+      write;
+      $~ = 'DESCR';
+      print "\n";
+      write;
+      print "\n";
+      foreach my $o (@$options) {
+        my $option = $o->[0];
+        my $desc = $o->[1];
+format OPTION =
+        ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<...
+        $option
+~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            $desc
+.
+        $~ = 'OPTION';
+        write;
+        print "\n";
+      }
+    }
+  }
+}
+
+package Options {
+  use Getopt::Long;
+  sub new
+  {
+    shift;
+    my ($usage, @options) = @_;
+    my $self = { usage => $usage };
+    if (ref $options[0] eq 'HASH') {
+      $self->{conf} = shift @options;
+    } else {
+      $self->{conf} = {};
+    }
+
+    $self->{options} = [@options];
+    return bless $self, 'Options';
+  }
+
+  sub get
+  {
+    my ($self) = shift;
+    $self->{opt} = {};
+    my @pre_args;
+    if (defined $self->{conf}->{'pre_args'}) {
+      @pre_args = ();
+      while (@ARGV and substr($ARGV[0], 0, 1) ne '-') {
+        push @pre_args, shift @ARGV;
+      }
+    }
+    my $res = GetOptions($self->{opt}, map { $_->[0] } @{$self->{options}});
+    $self->{opt}->{__PREARGS} = \@pre_args;
+    return $res;
+  }
+
+  sub opt { return $_[0]->{opt}; }
+
+  sub usage
+  {
+    my ($self, $cmd) = @_;
+
+    sub option_desc(@);
+    sub option_spec($$);
+
+    my $usage = $self->{usage};
+    my $o = join(' ', map { option_spec($_->[0], $_->[2]) } @{$self->{options}});
+    $usage =~ s/%o/$o/;
+    $usage =~ s/%c/$cmd/;
+
+    my $options = [];
+    foreach my $o (@{$self->{options}}) {
+      next if ref $o ne 'ARRAY';
+      push @$options, option_desc(@$o);
+    }
+
+    return ($usage, $options);
+
+    sub pretty_opts($$)
+    {
+      my ($o, $c) = @_;
+      my $op = '';
+      $o =~ /^([a-zA-Z0-9\-|]+)(?:([\!\+=:])(.+))?$/;
+      my @opts = split(/\|/, $1);
+      my ($spec, $type) = ($2, $3);
+      my $args;
+      my $optional = (defined $spec and $spec eq ':') ? 1 : 0;
+      if (defined $spec and $spec =~ /[:=]/) {
+        my %types = ( s => '<string>', i => '<int>', o => '<int>', f => '<float>' );
+        if (defined $c->{arg}) {
+          $args = $c->{arg};
+        } elsif (defined $types{$type}) {
+          $args = $types{$type};
+        } else {
+          $args = '<unk>';
+        }
+      }
+
+      sub pretty_opt($$$)
+      {
+        my ($opt, $optional, $arg) = @_;
+        return "--$opt=$arg" if length($opt) > 1 and defined $arg and not $optional;
+        return "-$opt $arg" if length($opt) == 1 and defined $arg and not $optional;
+        return "--$opt"."[=$arg]" if length($opt) > 1 and defined $arg and $optional;
+        return "-$opt [$arg]" if length($opt) == 1 and defined $arg and $optional;
+        return "-$opt" if length($opt) == 1;
+        return "--$opt";
+      }
+
+      @opts = map { pretty_opt($_, $optional, $args) } @opts;
+      return @opts;
+    }
+
+    sub option_desc(@)
+    {
+      my ($o, $d, $c) = @_;
+      return [] unless defined $o;
+      my @os = pretty_opts($o, $c);
+      my $txt = join(", ", @os);
+      return [$txt, $d];
+    }
+
+    sub option_spec($$)
+    {
+      my ($o, $c) = @_;
+      my @os = pretty_opts($o, $c);
+      my $txt = join("|", @os);
+      return $txt if defined $c->{required};
+      return "[$txt]";
     }
   }
 }
@@ -56,16 +196,6 @@ sub print_usage
   _print_usage(@_);
   exit(129);
 }
-
-sub get_options($$@)
-{
-  my $cmd = shift;
-  my $subcmd = shift;
-  unless (GetOptions(@_)) {
-    print_usage($cmd, $subcmd, *STDOUT);
-  }
-}
-
 
 sub run_subcmd
 {
@@ -84,7 +214,13 @@ sub run_subcmd
   if ($f->{sub}) {
     run_subcmd("$cmd $sub", $f->{sub});
   } elsif ($f->{cmd}) {
-    $f->{cmd}->("$cmd", { $sub => $f });
+    my $opt = $f->{opt};
+    if (defined $opt) {
+      print_usage($cmd, { $sub => $f }, *STDERR) unless $opt->get;
+      $f->{cmd}->($opt->opt, "$cmd", { $sub => $f });
+    } else {
+      $f->{cmd}->("$cmd", { $sub => $f });
+    }
   } else {
     die "fatal: illegal command specification in fmng script\n";
   }
@@ -770,8 +906,11 @@ sub cmd_list_repos($$)
   foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
 }
 
-$subcmds{list} = { cmd => \&cmd_list_repos, use => '',
-                   desc => "list all repos managed by $prog" };
+$subcmds{list} = {
+  cmd => \&cmd_list_repos, 
+  opt => Options->new('%c'),
+  desc => "list all repos managed by $prog"
+};
 $subcmds{'.default'} = $subcmds{'list'};
 
 ###### initialize managed directory ####################
@@ -788,24 +927,20 @@ sub place_commit_msg_hook()
   chmod 0755, "$d/hooks/commit-msg";
 }
 
-sub cmd_repo_init($$)
+sub cmd_repo_init($)
 {
   die "fatal: $prog repo already initialized $repo_dir\n" if defined get_repo_dir(1);
   $repo_dir = $repo_subdir;
-  my $repo_dat_src;
-  my $manifest_url;
-  get_options($_[0], $_[1],
-              "file|f:s" => \$repo_dat_src,
-              "url|u:s"  => \$manifest_url);
-
-  if (defined $manifest_url) {
+  my $opt = shift;
+  my $repo_dat_src = $opt->{file};
+  if (defined $opt->{url}) {
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
     mkdir($repo_subdir);
-    Git::Repository->run(clone => $manifest_url, "$repo_subdir/manifests");
+    Git::Repository->run(clone => $opt->{url}, "$repo_subdir/manifests");
     symlink("manifests/$repo_dat_src", "$repo_subdir/manifest.xml");
     open my $u, ">$repo_subdir/manifests_url";
-    print $u "$manifest_url\n";
+    print $u "$opt->{url}\n";
     close $u;
   } else {
     # use a local file as manifest and copy it
@@ -823,8 +958,15 @@ sub cmd_repo_init($$)
   place_commit_msg_hook();
 }
 
-$subcmds{init} = { cmd => \&cmd_repo_init, use => '<repos dat>',
-                   desc => "initialize $prog repo in the curent directory" };
+$subcmds{init} = {
+  cmd => \&cmd_repo_init,
+  opt => Options->new(
+    '%c %o',
+    [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
+    [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
+  ),
+  desc => "initialize $prog repo in the curent directory"
+};
 
 
 sub cmd_repo_sync($$)
@@ -848,8 +990,11 @@ sub cmd_repo_sync($$)
   $_->prepare foreach @$repos;
 }
 
-$subcmds{sync} = { cmd => \&cmd_repo_sync, use => '[<project>...]',
-                   desc => 'checkout/update all projects' };
+$subcmds{sync} = {
+  cmd => \&cmd_repo_sync,
+  opt => Options->new('%c [<project>...]'),
+  desc => 'checkout/update all projects'
+};
 sub forall
 {
   my ($what, @args) = @_;
@@ -857,25 +1002,18 @@ sub forall
 }
 
 ###### status #########################################
-$subcmds{status} = { cmd => sub { forall('status') }, use => '[<project>...]',
-                     desc => 'show the status of all projects' };
+$subcmds{status} = {
+  cmd => sub { forall('status') },
+  opt => Options->new('%c [<project>...]'),
+  desc => 'show the status of all projects'
+};
 
 
 ###### forall #######################################
-sub cmd_repo_forall($$)
+sub cmd_repo_forall($$$)
 {
-  my ($cmd, $subs) = @_;
-
-  my @prjs;
-  my $print_prj = 0;
-  while (my $a = shift @ARGV) {
-    if ($a eq '-p') {
-      $print_prj = 1;
-      next;
-    }
-    last if $a eq '-c';
-    push @prjs, $a;
-  }
+  my ($opt, $cmd, $subs) = @_;
+  my $print_prj = $opt->{p};
 
   if (not @ARGV) {
     print_usage($cmd, $subs);
@@ -889,13 +1027,20 @@ sub cmd_repo_forall($$)
       print "$r->{name}: $r->{path}\n" if $print_prj;
       chdir $r->abs_path;
       system(@ARGV);
-    }, \@prjs);
+    }, $opt->{__PREARGS});
 
   chdir $cwd;
 }
 
-$subcmds{forall} = { cmd => \&cmd_repo_forall, use => '[<project>...] -c <cmd> [<arg>...]',
-                     desc => 'run <cmd> for all projects' };
+$subcmds{forall} = {
+  cmd => \&cmd_repo_forall,
+  opt => Options->new(
+    '%c [<project>...] %o -- <cmd> [<arg>...]',
+    { pre_args => 1 },
+    [ 'p',   'print project name before each execution of <cmd>' ]
+  ),
+  desc => 'run <cmd> for all projects'
+};
 
 
 
@@ -907,25 +1052,34 @@ sub cmd_checkout
   forall('checkout', $branch);
 }
 
-$subcmds{checkout} = { cmd => \&cmd_checkout, use => '<branch> [<project>...]',
-                       desc => 'checkout <branch> in all projects' };
+$subcmds{checkout} = {
+  cmd => \&cmd_checkout,
+  opt => Options->new('%c <branch> [<project>...]'),
+  desc => 'checkout <branch> in all projects'
+};
 
 ###### start a new topic branch ##################
 sub cmd_start
 {
+  my $opt = shift;
   my $branch = shift @ARGV;
-  my $start;
 
   print_usage(@_) unless defined $branch;
+  my $base = $opt->{base};
   my @args = ('--track', '-b', $branch);
-  get_options($_[0], $_[1], 'base|t=s' => \$start);
-  push @args, $start if defined $start and $start ne '';
+  push @args, $base if defined $base and $base ne '';
 
   forall('checkout', @args);
 }
 
-$subcmds{start} = { cmd => \&cmd_start, use => '<branch> [-t|--base <start point>] [<project>...]',
-                    desc => 'start a new topic branch <branch> in all projects' };
+$subcmds{start} = {
+  cmd => \&cmd_start,
+  opt => Options->new(
+    '%c %o <branch name> [<projects>...]',
+    [ 'base|t=s', 'starting point for the new branch', { arg => '<start-point>' } ],
+  ),
+  desc => 'start a new topic branch <branch> in all projects'
+};
 
 $subcmds{co} = $subcmds{checkout};
 
@@ -936,8 +1090,11 @@ sub cmd_info($$)
   }, \@ARGV);
 }
 
-$subcmds{info} = { cmd => \&cmd_info, use => '[<project>...]',
-                   desc => 'show infos for each project' };
+$subcmds{info} = {
+  cmd => \&cmd_info,
+  opt => Options->new('%c [<project>...]'),
+  desc => 'show infos for each project'
+};
 
 sub cmd_remote_add($$)
 {
@@ -955,25 +1112,22 @@ sub cmd_remote_add($$)
   });
 }
 
-$subcmds{remote} = { sub => {
-    add => { cmd => \&cmd_remote_add, use => '<remote-name> <url> [<project>...]',
-             desc => 'add a repository remote for to each git repo using <url> as prefix' } } };
+$subcmds{remote} = {
+  sub => {
+    add => {
+      cmd => \&cmd_remote_add,
+      opt => Options->new('%c <remote-name> <url> [<project>...]'),
+      desc => 'add a repository remote for to each git repo using <url> as prefix'
+    }
+  }
+};
 
 
 ###### upload ####################################################
-sub cmd_upload($$)
+sub cmd_upload($$$)
 {
-  my $opts = { src_branch => 'HEAD' };
-
-  get_options($_[0], $_[1],
-    't' => \$opts->{add_branch_as_topic},
-    'topic=s' => \$opts->{topic},
-    're|reviewers=s@' => \$opts->{reviewer},
-    'cc=s@' => \$opts->{cc},
-    'br=s' => \$opts->{src_branch},
-    'D|destination|dest=s' => \$opts->{dst_branch},
-    'dry-run|n' => \$opts->{dry_run},
-  );
+  my $opts = shift;
+  $opts->{br} = 'HEAD' unless defined $opts->{br};
 
   my $projects = sorted_and_filtered_repos(\@ARGV);
 
@@ -981,7 +1135,7 @@ sub cmd_upload($$)
   my @warn;
   my @good_projects;
 
-  foreach_repo_r(sub {
+  foreach my $prj (@$projects) {
     sub check_ref($$)
     {
       my $prj = shift;
@@ -994,13 +1148,12 @@ sub cmd_upload($$)
       return $rev;
     }
 
-    my $prj = shift;
-    my $r = $prj->git;
-    my $src_br = $opts->{src_branch};
+    my $r = $prj->git($err);
+    my $src_br = $opts->{br};
     my $src_rev = check_ref($prj, $src_br);
 
     my $remote = $prj->{remote};
-    my $dst_br = $opts->{dst_branch};
+    my $dst_br = $opts->{dest};
     $dst_br = $prj->{revision} unless defined $dst_br;
     my $rem_br = "$remote/$dst_br";
     my $dst_rev = check_ref($prj, $rem_br);
@@ -1032,7 +1185,7 @@ sub cmd_upload($$)
     }
 
     push @good_projects, [ $prj, $src_br, $dst_br ];
-  }, $projects);
+  }
 
   if (@$err) {
     print_errors();
@@ -1059,7 +1212,7 @@ sub cmd_upload($$)
   print "\n";
 
   my @base_attr;
-  foreach my $c (@{$opts->{reviewer}}) {
+  foreach my $c (@{$opts->{re}}) {
     push @base_attr, "r=$c";
   }
 
@@ -1074,7 +1227,7 @@ sub cmd_upload($$)
     my $r = $prj->bare_git;
     if ($opts->{topic}) {
       push @attrs, "topic=$opts->{topic}";
-    } elsif ($opts->{add_branch_as_topic}) {
+    } elsif ($opts->{t}) {
       $src_br = $r->rev_parse('--abbrev-ref', $src_br) if $src_br eq 'HEAD';
       push @attrs, "topic=$src_br";
     }
@@ -1083,7 +1236,7 @@ sub cmd_upload($$)
       $dst_ref .= "%".join(',', @attrs);
     }
 
-    if ($opts->{dry_run}) {
+    if ($opts->{'dry-run'}) {
       print "$prj->{path}: git push $prj->{remote} $src_br:$dst_ref\n";
     } else {
       push @$info, $r->run('push', $prj->{remote}, "$src_br:$dst_ref");
@@ -1091,9 +1244,20 @@ sub cmd_upload($$)
   }
 }
 
-$subcmds{upload} = { cmd => \&cmd_upload,
-                     use => '[<option>...] [<project>...]',
-                     desc => 'upload changes for review' };
+$subcmds{upload} = {
+  cmd => \&cmd_upload,
+  opt => Options->new(
+    '%c %o [<project>...]',
+    [ 't',               'use branch name as topic' ],
+    [ 'topic=s',         'set <topic> as topic', { arg => '<topic>' } ],
+    [ 're|reviewers=s@', 'add a reviewer', { arg => '<reviewer>' } ],
+    [ 'cc=s@',           'add email for CC', { arg => '<cc-email>' } ],
+    [ 'br=s',            'upload <local branch> for review', { arg => '<local-branch>' } ],
+    [ 'dest|destination|D=s', 'upload commit for destination branch', { arg => '<branch>' } ],
+    [ 'dry-run|n',       'do a dry run, just print the git commands that would be issued' ],
+  ),
+  desc => 'upload changes for review'
+};
 
 run_subcmd($prog, \%subcmds);
 
