@@ -41,9 +41,7 @@ sub _print_usage
       _print_usage("$cmd $c", $d->{sub}, $out);
       print $out "\n";
     } else {
-      my $n = "$c ";
-      $n = '' if $c eq '.default';
-      my ($usage, $options) = $d->{opt}->usage("$cmd $n");
+      my ($usage, $options) = $d->{opt}->usage("$cmd $c");
       my $description = $d->{desc};
 format USAGE =
   ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
