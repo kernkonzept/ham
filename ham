@@ -8,7 +8,6 @@ use File::Path qw(make_path);
 use Git::Repository;
 use URI;
 use IO::Select;
-use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
 my $prog = 'ham';
 my %subcmds = ();
@@ -268,6 +267,7 @@ my $err  = [];
 
 ## stream to be processed by a stream processor
 package Stream {
+  use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
   sub new($$$@)
   {
     shift;
@@ -280,8 +280,8 @@ package Stream {
     $self->{cb} = $cb;
     $self->{sep} = "\n\r";
     $self->{args} = \@args;
-    my $flags = fcntl($fh, Fcntl::F_GETFL, 0);
-    fcntl($fh, Fcntl::F_SETFL, $flags | Fcntl::O_NONBLOCK);
+    my $flags = fcntl($fh, F_GETFL, 0);
+    fcntl($fh, F_SETFL, $flags | O_NONBLOCK);
     return bless $self, 'Stream';
   }
 
