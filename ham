@@ -10,7 +10,6 @@ use URI;
 use IO::Select;
 
 my $prog = 'ham';
-my %subcmds = ();
 
 sub filter_repos
 {
@@ -190,40 +189,68 @@ package Options {
   }
 }
 
+package Subcommand {
+  sub new
+  {
+    shift;
+    my %o = @_;
+    return bless {
+      cmd  => $o{cmd},
+      opt  => Options->new(ref $o{syn} eq 'ARRAY' ? @{$o{syn}} : $o{syn}),
+      desc => $o{desc}
+    }, 'Subcommand';
+  }
+
+  sub add
+  {
+    my ($self, $name, $subcmd) = @_;
+    $self->{sub}->{$name} = $subcmd;
+  }
+
+  sub alias
+  {
+    my ($self, $name, $orig) = @_;
+    $self->{sub}->{$name} = $self->sub->{$orig};
+  }
+
+  sub sub { return $_[0]->{sub}; }
+
+  sub run
+  {
+    my ($self, $command) = @_;
+    if (not defined $self->sub or not @ARGV or substr($ARGV[0],0,1) eq '-') {
+      return $self->_exec($command);
+    }
+
+    my $subcmd = shift @ARGV;
+    my $s = $self->sub->{$subcmd};
+    if (not defined $s) {
+      print STDERR "error: unknown command $command $subcmd\n";
+      ::print_usage($command, $self->sub, *STDERR); # exits
+    }
+    return $s->run("$command $subcmd");
+  }
+
+  sub _exec
+  {
+    my ($self, $command) = @_;
+    ::print_usage('', { $command => $self }, *STDERR) unless $self->{opt}->get;
+    return $self->{cmd}->($self->{opt}->opt, '', { $command => $self });
+  }
+}
+
 sub print_usage
 {
   _print_usage(@_);
   exit(129);
 }
 
-sub run_subcmd
-{
-  my $cmd = shift;
-  my $subcmds = shift;
-  my $sub = shift @ARGV;
+my $commands = Subcommand->new(
+  cmd  => sub { print_usage($_[1], $_[2]); },
+  opt  => '%c',
+  desc => 'print help'
+);
 
-  $sub = '.default' unless defined $sub;
-  my $f = $subcmds->{$sub};
-  if (not defined $f) {
-    print STDERR "error: unknown command '$sub' for '$cmd'\n";
-    print STDERR "usage:\n";
-    print_usage($cmd, $subcmds, *STDERR);
-  }
-
-  if ($f->{sub}) {
-    run_subcmd("$cmd $sub", $f->{sub});
-  } elsif ($f->{cmd}) {
-    my $opt = $f->{opt};
-    if (defined $opt) {
-      print_usage($cmd, { $sub => $f }, *STDERR) unless $opt->get;
-      $f->{cmd}->($opt->opt, "$cmd", { $sub => $f });
-    } else {
-      $f->{cmd}->("$cmd", { $sub => $f });
-    }
-  } else {
-    die "fatal: illegal command specification in fmng script\n";
-  }
-}
 
 my $repo_dir;
 my $repo_base;
@@ -899,6 +926,12 @@ sub foreach_repo($@)
   print_errors();
 }
 
+sub forall
+{
+  my ($what, @args) = @_;
+  foreach_repo(eval '\&Project::'.$what, \@ARGV, 0, @args);
+}
+
 
 ####### list repos ####################################
 sub cmd_list_repos($$)
@@ -906,12 +939,11 @@ sub cmd_list_repos($$)
   foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
 }
 
-$subcmds{list} = {
-  cmd => \&cmd_list_repos, 
-  opt => Options->new('%c'),
+$commands->add(list => Subcommand->new(
+  cmd  => \&cmd_list_repos, 
+  syn  => '%c',
   desc => "list all repos managed by $prog"
-};
-$subcmds{'.default'} = $subcmds{'list'};
+));
 
 ###### initialize managed directory ####################
 
@@ -958,15 +990,15 @@ sub cmd_repo_init($)
   place_commit_msg_hook();
 }
 
-$subcmds{init} = {
+$commands->add(init => Subcommand->new(
   cmd => \&cmd_repo_init,
-  opt => Options->new(
+  syn => [
     '%c %o',
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
-  ),
+  ],
   desc => "initialize $prog repo in the curent directory"
-};
+));
 
 
 sub cmd_repo_sync($$)
@@ -990,23 +1022,18 @@ sub cmd_repo_sync($$)
   $_->prepare foreach @$repos;
 }
 
-$subcmds{sync} = {
-  cmd => \&cmd_repo_sync,
-  opt => Options->new('%c [<project>...]'),
+$commands->add(sync => Subcommand->new(
+  cmd  => \&cmd_repo_sync,
+  syn  =>'%c [<project>...]',
   desc => 'checkout/update all projects'
-};
-sub forall
-{
-  my ($what, @args) = @_;
-  foreach_repo(eval '\&Project::'.$what, \@ARGV, 0, @args);
-}
+));
 
 ###### status #########################################
-$subcmds{status} = {
-  cmd => sub { forall('status') },
-  opt => Options->new('%c [<project>...]'),
+$commands->add(status => Subcommand->new(
+  cmd  => sub { forall('status') },
+  syn  => '%c [<project>...]',
   desc => 'show the status of all projects'
-};
+));
 
 
 ###### forall #######################################
@@ -1032,15 +1059,15 @@ sub cmd_repo_forall($$$)
   chdir $cwd;
 }
 
-$subcmds{forall} = {
+$commands->add(forall => Subcommand->new(
   cmd => \&cmd_repo_forall,
-  opt => Options->new(
+  syn => [
     '%c [<project>...] %o -- <cmd> [<arg>...]',
     { pre_args => 1 },
     [ 'p',   'print project name before each execution of <cmd>' ]
-  ),
+  ],
   desc => 'run <cmd> for all projects'
-};
+));
 
 
 
@@ -1052,11 +1079,13 @@ sub cmd_checkout
   forall('checkout', $branch);
 }
 
-$subcmds{checkout} = {
-  cmd => \&cmd_checkout,
-  opt => Options->new('%c <branch> [<project>...]'),
+$commands->add(checkout => Subcommand->new(
+  cmd  => \&cmd_checkout,
+  syn  => '%c <branch> [<project>...]',
   desc => 'checkout <branch> in all projects'
-};
+));
+
+$commands->alias(co => 'checkout');
 
 ###### start a new topic branch ##################
 sub cmd_start
@@ -1072,16 +1101,15 @@ sub cmd_start
   forall('checkout', @args);
 }
 
-$subcmds{start} = {
+$commands->add(start => Subcommand->new(
   cmd => \&cmd_start,
-  opt => Options->new(
+  syn => [
     '%c %o <branch name> [<projects>...]',
     [ 'base|t=s', 'starting point for the new branch', { arg => '<start-point>' } ],
-  ),
+  ],
   desc => 'start a new topic branch <branch> in all projects'
-};
+));
 
-$subcmds{co} = $subcmds{checkout};
 
 sub cmd_info($$)
 {
@@ -1090,11 +1118,11 @@ sub cmd_info($$)
   }, \@ARGV);
 }
 
-$subcmds{info} = {
-  cmd => \&cmd_info,
-  opt => Options->new('%c [<project>...]'),
+$commands->add(info => Subcommand->new(
+  cmd  => \&cmd_info,
+  syn  => '%c [<project>...]',
   desc => 'show infos for each project'
-};
+));
 
 sub cmd_remote_add($$)
 {
@@ -1112,15 +1140,21 @@ sub cmd_remote_add($$)
   });
 }
 
-$subcmds{remote} = {
-  sub => {
-    add => {
-      cmd => \&cmd_remote_add,
-      opt => Options->new('%c <remote-name> <url> [<project>...]'),
-      desc => 'add a repository remote for to each git repo using <url> as prefix'
-    }
-  }
-};
+$commands->add(
+  remote => Subcommand->new(
+    cmd => sub { print_usage($_[1], $_[0]->sub); },
+    syn => '%c',
+    desc => 'manage remotes for all projects'
+  )
+);
+
+$commands->sub->{remote}->add(
+  add => Subcommand->new(
+    cmd  => \&cmd_remote_add,
+    syn  => '%c <remote-name> <url> [<project>...]',
+    desc => 'add a repository remote for to each git repo using <url> as prefix'
+  )
+);
 
 
 ###### upload ####################################################
@@ -1244,9 +1278,9 @@ sub cmd_upload($$$)
   }
 }
 
-$subcmds{upload} = {
+$commands->add(upload => Subcommand->new(
   cmd => \&cmd_upload,
-  opt => Options->new(
+  syn => [
     '%c %o [<project>...]',
     [ 't',               'use branch name as topic' ],
     [ 'topic=s',         'set <topic> as topic', { arg => '<topic>' } ],
@@ -1255,11 +1289,11 @@ $subcmds{upload} = {
     [ 'br=s',            'upload <local branch> for review', { arg => '<local-branch>' } ],
     [ 'dest|destination|D=s', 'upload commit for destination branch', { arg => '<branch>' } ],
     [ 'dry-run|n',       'do a dry run, just print the git commands that would be issued' ],
-  ),
+  ],
   desc => 'upload changes for review'
-};
+));
 
-run_subcmd($prog, \%subcmds);
+$commands->run($prog);
 
 
 ### git commit-msg hook for adding Change IDs #############################
