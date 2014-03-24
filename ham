@@ -235,7 +235,7 @@ package Subcommand {
   sub _exec
   {
     my ($self, $command) = @_;
-    ::print_usage('', { $command => $self }, *STDERR) unless $self->{opt}->get;
+    ::print_usage($command, $self, *STDERR) unless $self->{opt}->get;
     return $self->{cmd}->($self->{opt}->opt, $command, $self);
   }
 }
