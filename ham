@@ -1191,15 +1191,23 @@ sub cmd_upload($$$)
     $dst_br = $prj->{revision} unless defined $dst_br;
     my $rem_br = "$remote/$dst_br";
     my $dst_rev = check_ref($prj, $rem_br);
-    return unless $src_rev and $dst_rev;
+    if (not $src_rev) {
+      push @warn, "$prj->{path}: branch has no branch $src_br, skipping.";
+      next;
+    }
+
+    if (not $dst_rev) {
+      push @warn, "$prj->{path}: branch has no branch $remote/$dst_br, skipping.";
+      next;
+    }
 
     # skip if there is nothing to do
-    return if $src_rev eq $dst_rev;
+    next if $src_rev eq $dst_rev;
 
     my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
     if (not @commits) {
       push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
-      return;
+      next;
     }
 
     # check the number of changes for this branch
@@ -1214,7 +1222,7 @@ sub cmd_upload($$$)
       my @cmt = $r->cat_object($c);
       if (not grep /^Change-Id:/, @cmt) {
         push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
-        return;
+        next;
       }
     }
 
