@@ -31,18 +31,9 @@ sub filter_repos
 
 sub _print_usage
 {
-  my $cmd = shift;
-  my $subcmds = shift;
-  my $out = shift;
+  my ($cmd, $subcmd, $out) = @_;
   $out = *STDERR unless defined $out;
-  foreach my $c (sort keys %$subcmds) {
-    my $d =$subcmds->{$c};
-    if ($d->{sub}) {
-      _print_usage("$cmd $c", $d->{sub}, $out);
-      print $out "\n";
-    } else {
-      my ($usage, $options) = $d->{opt}->usage("$cmd $c");
-      my $description = $d->{desc};
+  my ($usage, $options, $description) = $subcmd->usage($cmd);
 format USAGE =
   ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
   $usage
@@ -53,16 +44,16 @@ format DESCR =
 ~~      ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         $description
 .
-      local $~ = 'USAGE';
-      local $: = " \n";
-      write;
-      $~ = 'DESCR';
-      print "\n";
-      write;
-      print "\n";
-      foreach my $o (@$options) {
-        my $option = $o->[0];
-        my $desc = $o->[1];
+  local $~ = 'USAGE';
+  local $: = " \n";
+  write;
+  $~ = 'DESCR';
+  print "\n";
+  write;
+  print "\n";
+  foreach my $o (@$options) {
+    my $option = $o->[0];
+    my $desc = $o->[1];
 format OPTION =
         ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<...
         $option
@@ -70,10 +61,15 @@ format OPTION =
             $desc
 .
         $~ = 'OPTION';
-        write;
-        print "\n";
-      }
-    }
+    write;
+    print "\n";
+  }
+
+  return unless $subcmd->sub;
+  foreach my $c (sort keys %{$subcmd->sub}) {
+    my $d =$subcmd->sub->{$c};
+    _print_usage("$cmd $c", $d, $out);
+    print $out "\n";
   }
 }
 
@@ -213,6 +209,12 @@ package Subcommand {
 
   sub sub { return $_[0]->{sub}; }
 
+  sub usage
+  {
+    my $self = shift;
+    return ($self->{opt}->usage(@_), $self->{desc});
+  }
+
   sub run
   {
     my ($self, $command) = @_;
@@ -224,7 +226,7 @@ package Subcommand {
     my $s = $self->sub->{$subcmd};
     if (not defined $s) {
       print STDERR "error: unknown command $command $subcmd\n";
-      ::print_usage($command, $self->sub, *STDERR); # exits
+      ::print_usage($command, $self, *STDERR); # exits
     }
     return $s->run("$command $subcmd");
   }
@@ -233,7 +235,7 @@ package Subcommand {
   {
     my ($self, $command) = @_;
     ::print_usage('', { $command => $self }, *STDERR) unless $self->{opt}->get;
-    return $self->{cmd}->($self->{opt}->opt, '', { $command => $self });
+    return $self->{cmd}->($self->{opt}->opt, $command, $self);
   }
 }
 
@@ -245,7 +247,7 @@ sub print_usage
 
 my $commands = Subcommand->new(
   cmd  => sub { print_usage($_[1], $_[2]); },
-  opt  => '%c',
+  syn  => '%c',
   desc => 'print help'
 );
 
@@ -1140,7 +1142,7 @@ sub cmd_remote_add($$)
 
 $commands->add(
   remote => Subcommand->new(
-    cmd => sub { print_usage($_[1], $_[0]->sub); },
+    cmd => sub { print_usage($_[1], $_[2]); },
     syn => '%c',
     desc => 'manage remotes for all projects'
   )
