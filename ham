@@ -12,22 +12,21 @@ use Cwd;
 
 my $prog = 'ham';
 
-sub filter_repos
+sub filter_projects
 {
-  my $repos = shift;
+  my $projects = shift;
   my $argv  = shift;
   $argv = \@ARGV unless defined $argv;
 
   if (defined $argv->[0]) {
-    my @old_repos = @$repos;
     my @r = ();
 
     foreach my $n (@$argv) {
-      push @r, grep { $_->{name} eq $n } @old_repos;
+      push @r, grep { $_->{name} eq $n } @$projects;
     }
     return \@r;
   }
-  return $repos;
+  return $projects;
 }
 
 sub _print_usage
@@ -850,7 +849,7 @@ sub apply_default($$$)
   $r->{$what} = $manifest->{default}->{$what} unless defined $r->{$what};
 }
 
-sub load_repos
+sub load_projects
 {
   my $file = shift;
   $file = repo_manifest();
@@ -863,8 +862,8 @@ sub load_repos
     ForceArray => ['project', 'remote'],
     KeyAttr => { project => "+name", remote => "+name" });
 
-  my $repos = $manifest->{project};
-  foreach my $r (values %$repos) {
+  my $projects = $manifest->{project};
+  foreach my $r (values %$projects) {
     foreach my $attr (@project_attrs) {
       apply_default($manifest, $r, $attr);
     }
@@ -877,17 +876,17 @@ sub load_repos
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
   }
-  return $repos;
+  return $projects;
 }
 
 ##########################################################################
 
 sub foreach_repo_r($$@)
 {
-  my ($func, $repos, $progress, @args) = @_;
+  my ($func, $projects, $progress, @args) = @_;
   my $cnt = 1;
-  my $total = scalar(@$repos);
-  foreach my $r (@$repos) {
+  my $total = scalar(@$projects);
+  foreach my $r (@$projects) {
     print STDERR "\r\e[K($cnt/$total) " if $progress;
     $func->($r, @args);
     $cnt++;
@@ -909,12 +908,12 @@ sub print_errors()
   $err = [];
 }
 
-sub sorted_and_filtered_repos
+sub sorted_and_filtered_projects
 {
   my $prjs = shift;
   $prjs = \@ARGV unless defined $prjs;
-  my $repos = filter_repos([values %{load_repos()}], $prjs);
-  return [ sort { $a->{name} cmp $b->{name} } @$repos ];
+  my $projects = filter_projects([ values %{load_projects()} ], $prjs);
+  return [ sort { $a->{name} cmp $b->{name} } @$projects ];
 }
 
 sub foreach_repo($@)
@@ -922,7 +921,7 @@ sub foreach_repo($@)
   my ($func, $prjs, $progress, @args) = @_;
   $prjs = \@ARGV unless defined $prjs;
 
-  foreach_repo_r($func, sorted_and_filtered_repos($prjs), $progress, @args);
+  foreach_repo_r($func, sorted_and_filtered_projects($prjs), $progress, @args);
   print_errors();
 }
 
@@ -933,16 +932,16 @@ sub forall
 }
 
 
-####### list repos ####################################
-sub cmd_list_repos($$)
+####### list projects #################################
+sub cmd_list_projects($$)
 {
   foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
 }
 
 $commands->add(list => Subcommand->new(
-  cmd  => \&cmd_list_repos, 
+  cmd  => \&cmd_list_projects, 
   syn  => '%c',
-  desc => "list all repos managed by $prog"
+  desc => "list all projects managed by $prog"
 ));
 
 ###### initialize managed directory ####################
@@ -959,7 +958,7 @@ sub place_commit_msg_hook()
   chmod 0755, "$d/hooks/commit-msg";
 }
 
-sub cmd_repo_init($)
+sub cmd_init($)
 {
   die "fatal: $prog repo already initialized $repo_dir\n" if defined get_repo_dir(1);
   $repo_dir = $repo_subdir;
@@ -977,7 +976,7 @@ sub cmd_repo_init($)
   } else {
     # use a local file as manifest and copy it
     my $repo_dat = repo_manifest();
-    die "error: you need to specify a repos-dat file\n" if not defined $repo_dat_src;
+    die "error: you need to specify a manifest XML file\n" if not defined $repo_dat_src;
     die "error: $repo_dat_src is no readable file\n" if not (-f $repo_dat_src and -r $repo_dat_src);
     mkdir($repo_subdir);
     open my $rd, ">$repo_dat" or die "error: cannot open $repo_dat: $!\n";
@@ -991,7 +990,7 @@ sub cmd_repo_init($)
 }
 
 $commands->add(init => Subcommand->new(
-  cmd => \&cmd_repo_init,
+  cmd => \&cmd_init,
   syn => [
     '%c %o',
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
@@ -1001,7 +1000,7 @@ $commands->add(init => Subcommand->new(
 ));
 
 
-sub cmd_repo_sync($$)
+sub cmd_sync($$)
 {
   # update manifest repo, if there is any
   if (-d get_repo_dir().'/manifests/.git') {
@@ -1010,21 +1009,21 @@ sub cmd_repo_sync($$)
   }
   place_commit_msg_hook();
 
-  my $repos = sorted_and_filtered_repos(\@ARGV);
+  my $projects = sorted_and_filtered_projects(\@ARGV);
   my $q = Process_queue->new();
 
-  foreach my $r (@$repos) { $q->queue(sub { $r->sync; }); }
+  foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
   $q->work;
 
   print_errors();
   print STDERR "Preparing gits .....................\n";
 
-  $_->prepare foreach @$repos;
+  $_->prepare foreach @$projects;
   print_errors();
 }
 
 $commands->add(sync => Subcommand->new(
-  cmd  => \&cmd_repo_sync,
+  cmd  => \&cmd_sync,
   syn  =>'%c [<project>...]',
   desc => 'checkout/update all projects'
 ));
@@ -1038,7 +1037,7 @@ $commands->add(status => Subcommand->new(
 
 
 ###### forall #######################################
-sub cmd_repo_forall($$$)
+sub cmd_forall($$$)
 {
   my ($opt, $cmd, $subs) = @_;
   my $print_prj = $opt->{p};
@@ -1060,7 +1059,7 @@ sub cmd_repo_forall($$$)
 }
 
 $commands->add(forall => Subcommand->new(
-  cmd => \&cmd_repo_forall,
+  cmd => \&cmd_forall,
   syn => [
     '%c [<project>...] %o -- <cmd> [<arg>...]',
     { pre_args => 1 },
@@ -1163,7 +1162,7 @@ sub cmd_upload($$$)
   my $opts = shift;
   $opts->{br} = 'HEAD' unless defined $opts->{br};
 
-  my $projects = sorted_and_filtered_repos(\@ARGV);
+  my $projects = sorted_and_filtered_projects(\@ARGV);
 
   my $approve;
   my @warn;
