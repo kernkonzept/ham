@@ -928,8 +928,8 @@ sub sorted_and_filtered_projects
 {
   my $prjs = shift;
   $prjs = \@ARGV unless defined $prjs;
-  my $projects = filter_projects([ values %{load_projects()} ], $prjs);
-  return [ sort { $a->{name} cmp $b->{name} } @$projects ];
+  my $projects = filter_projects(load_projects(), $prjs);
+  return [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 }
 
 sub foreach_repo($@)
