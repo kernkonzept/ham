@@ -263,6 +263,7 @@ sub print_usage
   exit(129);
 }
 
+###### the main command (no command given) ############################
 my $commands = Subcommand->new(
   cmd  => sub { print_usage($_[1], $_[2]); },
   syn  => '%c',
@@ -951,16 +952,17 @@ sub forall
 
 
 ####### list projects #################################
-sub cmd_list_projects($$)
-{
-  foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
-}
-
 $commands->add(list => Subcommand->new(
   cmd  => \&cmd_list_projects, 
   syn  => '%c',
   desc => "list all projects managed by $prog"
 ));
+
+sub cmd_list_projects($$)
+{
+  foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
+}
+
 
 ###### initialize managed directory ####################
 
@@ -975,6 +977,17 @@ sub place_commit_msg_hook()
   close $cm;
   chmod 0755, "$d/hooks/commit-msg";
 }
+
+###### init #############################################
+$commands->add(init => Subcommand->new(
+  cmd => \&cmd_init,
+  syn => [
+    '%c %o',
+    [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
+    [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
+  ],
+  desc => "initialize $prog meta project in the curent directory"
+));
 
 sub cmd_init($)
 {
@@ -1007,16 +1020,13 @@ sub cmd_init($)
   place_commit_msg_hook();
 }
 
-$commands->add(init => Subcommand->new(
-  cmd => \&cmd_init,
-  syn => [
-    '%c %o',
-    [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
-    [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
-  ],
-  desc => "initialize $prog meta project in the curent directory"
-));
 
+###### sync ###########################################
+$commands->add(sync => Subcommand->new(
+  cmd  => \&cmd_sync,
+  syn  =>'%c [<project>...]',
+  desc => 'checkout/update all projects'
+));
 
 sub cmd_sync($$)
 {
@@ -1040,11 +1050,6 @@ sub cmd_sync($$)
   print_errors();
 }
 
-$commands->add(sync => Subcommand->new(
-  cmd  => \&cmd_sync,
-  syn  =>'%c [<project>...]',
-  desc => 'checkout/update all projects'
-));
 
 ###### status #########################################
 $commands->add(status => Subcommand->new(
@@ -1055,6 +1060,16 @@ $commands->add(status => Subcommand->new(
 
 
 ###### forall #######################################
+$commands->add(forall => Subcommand->new(
+  cmd => \&cmd_forall,
+  syn => [
+    '%c [<project>...] %o -- <cmd> [<arg>...]',
+    { pre_args => 1 },
+    [ 'p',   'print project name before each execution of <cmd>' ]
+  ],
+  desc => 'run <cmd> for all projects'
+));
+
 sub cmd_forall($$$)
 {
   my ($opt, $cmd, $subs) = @_;
@@ -1076,26 +1091,8 @@ sub cmd_forall($$$)
   chdir $cwd;
 }
 
-$commands->add(forall => Subcommand->new(
-  cmd => \&cmd_forall,
-  syn => [
-    '%c [<project>...] %o -- <cmd> [<arg>...]',
-    { pre_args => 1 },
-    [ 'p',   'print project name before each execution of <cmd>' ]
-  ],
-  desc => 'run <cmd> for all projects'
-));
-
-
 
 ####### checkout ################################
-sub cmd_checkout
-{
-  my $branch = shift @ARGV;
-  print_usage(@_) unless defined $branch;
-  forall('checkout', $branch);
-}
-
 $commands->add(checkout => Subcommand->new(
   cmd  => \&cmd_checkout,
   syn  => '%c <branch> [<project>...]',
@@ -1104,7 +1101,24 @@ $commands->add(checkout => Subcommand->new(
 
 $commands->alias(co => 'checkout');
 
+sub cmd_checkout
+{
+  my $branch = shift @ARGV;
+  print_usage(@_) unless defined $branch;
+  forall('checkout', $branch);
+}
+
+
 ###### start a new topic branch ##################
+$commands->add(start => Subcommand->new(
+  cmd => \&cmd_start,
+  syn => [
+    '%c %o <branch name> [<projects>...]',
+    [ 'base|t=s', 'starting point for the new branch', { arg => '<start-point>' } ],
+  ],
+  desc => 'start a new topic branch <branch> in all projects'
+));
+
 sub cmd_start
 {
   my $opt = shift;
@@ -1118,15 +1132,13 @@ sub cmd_start
   forall('checkout', @args);
 }
 
-$commands->add(start => Subcommand->new(
-  cmd => \&cmd_start,
-  syn => [
-    '%c %o <branch name> [<projects>...]',
-    [ 'base|t=s', 'starting point for the new branch', { arg => '<start-point>' } ],
-  ],
-  desc => 'start a new topic branch <branch> in all projects'
-));
 
+###### info ####################################
+$commands->add(info => Subcommand->new(
+  cmd  => \&cmd_info,
+  syn  => '%c [<project>...]',
+  desc => 'show infos for each project'
+));
 
 sub cmd_info($$)
 {
@@ -1135,11 +1147,24 @@ sub cmd_info($$)
   }, \@ARGV);
 }
 
-$commands->add(info => Subcommand->new(
-  cmd  => \&cmd_info,
-  syn  => '%c [<project>...]',
-  desc => 'show infos for each project'
-));
+
+###### remote #######################################
+$commands->add(
+  remote => Subcommand->new(
+    cmd => sub { print_usage($_[1], $_[2]); },
+    syn => '%c',
+    desc => 'manage remotes for all projects'
+  )
+);
+
+###### remote add ####################################
+$commands->sub->{remote}->add(
+  add => Subcommand->new(
+    cmd  => \&cmd_remote_add,
+    syn  => '%c <remote-name> <url> [<project>...]',
+    desc => 'add a repository remote for to each git repo using <url> as prefix'
+  )
+);
 
 sub cmd_remote_add($$)
 {
@@ -1157,24 +1182,23 @@ sub cmd_remote_add($$)
   });
 }
 
-$commands->add(
-  remote => Subcommand->new(
-    cmd => sub { print_usage($_[1], $_[2]); },
-    syn => '%c',
-    desc => 'manage remotes for all projects'
-  )
-);
-
-$commands->sub->{remote}->add(
-  add => Subcommand->new(
-    cmd  => \&cmd_remote_add,
-    syn  => '%c <remote-name> <url> [<project>...]',
-    desc => 'add a repository remote for to each git repo using <url> as prefix'
-  )
-);
-
 
 ###### upload ####################################################
+$commands->add(upload => Subcommand->new(
+  cmd => \&cmd_upload,
+  syn => [
+    '%c %o [<project>...]',
+    [ 't',               'use branch name as topic' ],
+    [ 'topic=s',         'set <topic> as topic', { arg => '<topic>' } ],
+    [ 're|reviewers=s@', 'add a reviewer', { arg => '<reviewer>' } ],
+    [ 'cc=s@',           'add email for CC', { arg => '<cc-email>' } ],
+    [ 'br=s',            'upload <local branch> for review', { arg => '<local-branch>' } ],
+    [ 'dest|destination|D=s', 'upload commit for destination branch', { arg => '<branch>' } ],
+    [ 'dry-run|n',       'do a dry run, just print the git commands that would be issued' ],
+  ],
+  desc => 'upload changes for review'
+));
+
 sub cmd_upload($$$)
 {
   my $opts = shift;
@@ -1303,22 +1327,9 @@ sub cmd_upload($$$)
   }
 }
 
-$commands->add(upload => Subcommand->new(
-  cmd => \&cmd_upload,
-  syn => [
-    '%c %o [<project>...]',
-    [ 't',               'use branch name as topic' ],
-    [ 'topic=s',         'set <topic> as topic', { arg => '<topic>' } ],
-    [ 're|reviewers=s@', 'add a reviewer', { arg => '<reviewer>' } ],
-    [ 'cc=s@',           'add email for CC', { arg => '<cc-email>' } ],
-    [ 'br=s',            'upload <local branch> for review', { arg => '<local-branch>' } ],
-    [ 'dest|destination|D=s', 'upload commit for destination branch', { arg => '<branch>' } ],
-    [ 'dry-run|n',       'do a dry run, just print the git commands that would be issued' ],
-  ],
-  desc => 'upload changes for review'
-));
 
-$commands->run($prog);
+## the main program #####################################
+exit($commands->run($prog));
 
 
 ### git commit-msg hook for adding Change IDs #############################
