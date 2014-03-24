@@ -19,12 +19,28 @@ sub filter_projects
   $argv = \@ARGV unless defined $argv;
 
   if (defined $argv->[0]) {
-    my @r = ();
-
+    my %r = ();
     foreach my $n (@$argv) {
-      push @r, grep { $_->{name} eq $n } @$projects;
+      $r{$n} = $projects->{$n} if exists $projects->{$n};
+
+      # handle '.' magic, find out project is the best hitfor
+      # the current working directory
+      if ($n eq '.') {
+        my $cwd = getcwd;
+        my $hit_p = '';
+        my $hit;
+        foreach my $p (values %$projects) {
+          my $path = $p->abs_path;
+          if ($cwd =~ /^$path(\/+|$)/ and length $path > length $hit_p) {
+            $hit_p = $path;
+            $hit = $p;
+          }
+        }
+
+        $r{$hit->{name}} = $hit if defined $hit;
+      }
     }
-    return \@r;
+    return \%r;
   }
   return $projects;
 }
@@ -594,7 +610,7 @@ package Project {
   {
     my $self = shift;
     my $base = ::repo_base();
-    return "$base/$self->{path}";
+    return catdir($base, $self->{path});
   }
 
   sub repo_dir_rel($$)
