@@ -8,6 +8,7 @@ use File::Path qw(make_path);
 use Git::Repository;
 use URI;
 use IO::Select;
+use Cwd;
 
 my $prog = 'ham';
 
@@ -260,8 +261,7 @@ sub get_repo_dir(@)
 {
   my $try = shift;
   return $repo_dir if defined $repo_dir;
-  my $cwd = qx("pwd");
-  chomp($cwd);
+  my $cwd = getcwd;
 
   my ($vol, $dirs, $file) = File::Spec->splitpath($cwd, no_file => 1);
   my @dirs = File::Spec->splitdir($dirs);
@@ -1020,6 +1020,7 @@ sub cmd_repo_sync($$)
   print STDERR "Preparing gits .....................\n";
 
   $_->prepare foreach @$repos;
+  print_errors();
 }
 
 $commands->add(sync => Subcommand->new(
@@ -1046,8 +1047,7 @@ sub cmd_repo_forall($$$)
     print_usage($cmd, $subs);
   }
 
-  my $cwd = qx("pwd");
-  chomp($cwd);
+  my $cwd = getcwd;
 
   foreach_repo(sub {
       my $r = shift;
