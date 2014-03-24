@@ -10,6 +10,8 @@ use URI;
 use IO::Select;
 use Cwd;
 
+$ENV{LC_ALL} = 'C';
+
 my $prog = 'ham';
 
 sub filter_projects
@@ -1012,7 +1014,7 @@ $commands->add(init => Subcommand->new(
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
   ],
-  desc => "initialize $prog repo in the curent directory"
+  desc => "initialize $prog meta project in the curent directory"
 ));
 
 
