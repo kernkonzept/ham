@@ -47,49 +47,6 @@ sub filter_projects
   return $projects;
 }
 
-sub _print_usage
-{
-  my ($cmd, $subcmd, $out) = @_;
-  $out = *STDERR unless defined $out;
-  my ($usage, $options, $description) = $subcmd->usage($cmd);
-format USAGE =
-  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-  $usage
-~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            $usage
-.
-format DESCR =
-~~      ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        $description
-.
-  local $~ = 'USAGE';
-  local $: = " \n";
-  write;
-  $~ = 'DESCR';
-  print "\n";
-  write;
-  print "\n";
-  foreach my $o (@$options) {
-    my $option = $o->[0];
-    my $desc = $o->[1];
-format OPTION =
-        ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<...
-        $option
-~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            $desc
-.
-        $~ = 'OPTION';
-    write;
-    print "\n";
-  }
-
-  return unless $subcmd->sub;
-  foreach my $c (sort keys %{$subcmd->sub}) {
-    my $d =$subcmd->sub->{$c};
-    _print_usage("$cmd $c", $d, $out);
-    print $out "\n";
-  }
-}
 
 package Options {
   use Getopt::Long;
@@ -244,7 +201,7 @@ package Subcommand {
     my $s = $self->sub->{$subcmd};
     if (not defined $s) {
       print STDERR "error: unknown command $command $subcmd\n";
-      ::print_usage($command, $self, *STDERR); # exits
+      $self->print_usage($command, *STDERR); # exits
     }
     return $s->run("$command $subcmd");
   }
@@ -252,20 +209,75 @@ package Subcommand {
   sub _exec
   {
     my ($self, $command) = @_;
-    ::print_usage($command, $self, *STDERR) unless $self->{opt}->get;
+    $self->print_usage($command, *STDERR) unless $self->{opt}->get;
     return $self->{cmd}->($self->{opt}->opt, $command, $self);
   }
-}
 
-sub print_usage
-{
-  _print_usage(@_);
-  exit(129);
+  sub print_usage
+  {
+    shift->_print_usage(@_);
+    exit(129);
+  }
+
+  sub _print_usage
+  {
+    my ($subcmd, $cmd, $out) = @_;
+    $out = *STDERR unless defined $out;
+
+    sub strip_spaces($)
+    {
+      my $i = shift;
+      $i =~ s,[\n\t ]+, ,sg;
+      return $i;
+    }
+
+    my ($usage, $options, $description) = $subcmd->usage($cmd);
+    $description = strip_spaces($description);
+
+format USAGE =
+  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  $usage
+~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            $usage
+.
+format DESCR =
+~~      ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        $description
+.
+    local $~ = 'USAGE';
+    local $: = " \n";
+    write;
+    $~ = 'DESCR';
+    print "\n";
+    write;
+    print "\n";
+    foreach my $o (@$options) {
+      my $option = $o->[0];
+      my $desc = strip_spaces($o->[1]);
+format OPTION =
+        ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<...
+        $option
+~~          ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            $desc
+.
+        $~ = 'OPTION';
+      write;
+      print "\n";
+    }
+
+    return unless $subcmd->sub;
+    foreach my $c (sort keys %{$subcmd->sub}) {
+      my $d =$subcmd->sub->{$c};
+      $d->_print_usage("$cmd $c", $out);
+      print $out "\n";
+    }
+  }
+
 }
 
 ###### the main command (no command given) ############################
 my $commands = Subcommand->new(
-  cmd  => sub { print_usage($_[1], $_[2]); },
+  cmd  => sub { $_[2]->print_usage($_[1]); },
   syn  => '%c',
   desc => 'print help'
 );
@@ -1076,7 +1088,7 @@ sub cmd_forall($$$)
   my $print_prj = $opt->{p};
 
   if (not @ARGV) {
-    print_usage($cmd, $subs);
+    $subs->print_usage($cmd);
   }
 
   my $cwd = getcwd;
@@ -1104,7 +1116,7 @@ $commands->alias(co => 'checkout');
 sub cmd_checkout
 {
   my $branch = shift @ARGV;
-  print_usage(@_) unless defined $branch;
+  $_[2]->print_usage($_[1]) unless defined $branch;
   forall('checkout', $branch);
 }
 
@@ -1124,7 +1136,7 @@ sub cmd_start
   my $opt = shift;
   my $branch = shift @ARGV;
 
-  print_usage(@_) unless defined $branch;
+  $_[2]->print_usage($_[1]) unless defined $branch;
   my $base = $opt->{base};
   my @args = ('--track', '-b', $branch);
   push @args, $base if defined $base and $base ne '';
@@ -1151,7 +1163,7 @@ sub cmd_info($$)
 ###### remote #######################################
 $commands->add(
   remote => Subcommand->new(
-    cmd => sub { print_usage($_[1], $_[2]); },
+    cmd => sub { $_[2]->print_usage($_[1]); },
     syn => '%c',
     desc => 'manage remotes for all projects'
   )
@@ -1169,9 +1181,9 @@ $commands->sub->{remote}->add(
 sub cmd_remote_add($$)
 {
   my $name = shift @ARGV;
-  print_usage($_[0], $_[1]) unless defined $name;
+  $_[2]->print_usage($_[1]) unless defined $name;
   my $url = shift @ARGV;
-  print_usage($_[0], $_[1]) unless defined $url;
+  $_[2]->print_usage($_[1]) unless defined $url;
   $url .= '/' unless substr($url, -1, 1) eq '/';
   $url = URI->new($url);
   foreach_repo(sub {
