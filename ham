@@ -1200,13 +1200,16 @@ $commands->add(upload => Subcommand->new(
   cmd => \&cmd_upload,
   syn => [
     '%c %o [<project>...]',
-    [ 't',               'use branch name as topic' ],
-    [ 'topic=s',         'set <topic> as topic', { arg => '<topic>' } ],
-    [ 're|reviewers=s@', 'add a reviewer', { arg => '<reviewer>' } ],
-    [ 'cc=s@',           'add email for CC', { arg => '<cc-email>' } ],
-    [ 'br=s',            'upload <local branch> for review', { arg => '<local-branch>' } ],
-    [ 'dest|destination|D=s', 'upload commit for destination branch', { arg => '<branch>' } ],
-    [ 'dry-run|n',       'do a dry run, just print the git commands that would be issued' ],
+    [ 't',               'Use branch name as topic' ],
+    [ 'topic=s',         'Set <topic> as topic', { arg => '<topic>' } ],
+    [ 're|reviewers=s@', q|Add a reviewers. This option takes a comma separated
+                           list of reveiwers and may be supplied more than once|, { arg => '<reviewer>' } ],
+    [ 'cc=s@',           q|Add email addresses for CC. This option takes a comma
+                           separated list of email addresses and may be supplied
+                           multiple times|,                                       { arg => '<cc-email>' } ],
+    [ 'br=s',            'Upload <local branch> for review',                      { arg => '<local-branch>' } ],
+    [ 'dest|destination|D=s', 'Upload commit for destination branch',             { arg => '<branch>' } ],
+    [ 'dry-run|n',       'Do a dry run, just print the git commands that would be issued' ],
   ],
   desc => 'upload changes for review'
 ));
@@ -1307,11 +1310,11 @@ sub cmd_upload($$$)
   print "\n";
 
   my @base_attr;
-  foreach my $c (@{$opts->{re}}) {
+  foreach my $c (map { split /,/ } @{$opts->{re}}) {
     push @base_attr, "r=$c";
   }
 
-  foreach my $c (@{$opts->{cc}}) {
+  foreach my $c (map { split /,/ } @{$opts->{cc}}) {
     push @base_attr, "cc=$c";
   }
 
