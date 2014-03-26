@@ -1494,11 +1494,15 @@ $commands->add('download-id' => Subcommand->new(
       exit(0);
     }
 
-    $prjs = filter_projects($prjs, [ map { $_->{project} } @changes ]);
-    if (not %$prjs) {
+    my $prjs2 = filter_projects($prjs, [ map { $_->{project} } @changes ]);
+    if (not %$prjs2) {
       print STDERR "no matching projects for id $change_id found\n";
+      print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
+      print STDERR "prjs w/ change: ".join(' ', sort map { $_->{project} } @changes)."\n";
       exit(0);
     }
+
+    $prjs = $prjs2;
 
     print "found change $change_id in the following projects:\n". join(' ', sort keys %$prjs)."\n";
     my %get_change = ();
