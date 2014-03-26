@@ -930,14 +930,16 @@ sub foreach_repo_r($$@)
   print STDERR "\n" if $progress and $total;
 }
 
-sub print_errors()
+sub print_errors
 {
+  my %opts = @_;
   foreach my $i (@$info) {
     print "$i\n";
   }
 
+  my $errpfx = defined $opts{no_prefix} ? '' : 'error: ';
   foreach my $e (@$err) {
-    print STDERR "error: $e\n";
+    print STDERR "$errpfx$e\n";
   }
 
   $info = [];
