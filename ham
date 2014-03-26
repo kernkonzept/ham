@@ -875,6 +875,56 @@ package Project {
     }
   }
 
+  sub check_for_upload()
+  {
+    my ($prj, $warn, $src_br, $dst_br, $approve_cb) = @_;
+    my $r = $prj->git($err);
+    my $src_rev = $r->rev_parse($src_br);
+
+    if (not $src_rev) {
+      push @$warn, "$prj->{path}: branch has no branch $src_br, skipping.";
+      return 0;
+    }
+
+    my $remote = $prj->{remote};
+    $dst_br = $prj->{revision} unless defined $dst_br;
+    my $rem_br = "$remote/$dst_br";
+    my $dst_rev = $r->rev_parse($rem_br);
+
+    if (not $dst_rev) {
+      push @$warn, "$prj->{path}: branch has no branch $remote/$dst_br, skipping.";
+      return 0;
+    }
+
+    # skip if there is nothing to do
+    return 0 if $src_rev eq $dst_rev;
+
+    my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
+    if (not @commits) {
+      push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
+      return 'error';
+    }
+
+    # check if all commits have change IDs
+    foreach my $c (@commits) {
+      my @cmt = $r->cat_object($c);
+      if (not grep /^Change-Id:/, @cmt) {
+        push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
+        return 'error';
+      }
+    }
+
+    # check the number of changes for this branch
+    my $num_changes = scalar(@commits);
+    if ($num_changes > 1) {
+      if (not defined $approve_cb or not $approve_cb->($prj, \@commits)) {
+        push @$err, "$prj->{path}: branch $src_br has more than one ($num_changes) change for $rem_br";
+        return 'error';
+      }
+    }
+    return 1;
+  }
+
 }
 ##########################################################################
 
@@ -1203,6 +1253,20 @@ sub cmd_remote_add($$)
 }
 
 
+sub approve_dependent_changes
+{
+  my ($prj, $commits) = @_;
+  print STDERR "project $prj->{name} ($prj->{path}) has more than one change,\n".
+               "this will produce the following depnendent changes:\n\n";
+  my @log = $prj->bare_git->run('log', '--oneline', "$$commits[$#$commits]~1..$$commits[0]");
+
+  print STDERR "$_\n" foreach (@log);
+  print STDERR "\ndo you want to upload these changes at once? [y/N]: ";
+  my $answer = <STDIN>;
+  return 1 if $answer eq 'y' or $answer eq 'Y' or $answer eq 'yes';
+  return 0;
+}
+
 ###### upload ####################################################
 $commands->add(upload => Subcommand->new(
   cmd => \&cmd_upload,
@@ -1229,68 +1293,15 @@ sub cmd_upload($$$)
 
   my $projects = sorted_and_filtered_projects(\@ARGV);
 
-  my $approve;
   my @warn;
   my @good_projects;
 
   foreach my $prj (@$projects) {
-    sub check_ref($$)
-    {
-      my $prj = shift;
-      my $br = shift;
-      my $r = $prj->bare_git;
-      my $rev = $r->rev_parse($br);
-      if (not defined $rev) {
-        push @$err, "$prj->{path} has no branch named $br";
-      }
-      return $rev;
-    }
+    my ($upload, $src_br, $dst_br)
+      = $prj->check_for_upload(\@warn, $opts->{br}, $opts->{dest},
+                               \&approve_dependent_changes);
 
-    my $r = $prj->git($err);
-    my $src_br = $opts->{br};
-    my $src_rev = check_ref($prj, $src_br);
-
-    my $remote = $prj->{remote};
-    my $dst_br = $opts->{dest};
-    $dst_br = $prj->{revision} unless defined $dst_br;
-    my $rem_br = "$remote/$dst_br";
-    my $dst_rev = check_ref($prj, $rem_br);
-    if (not $src_rev) {
-      push @warn, "$prj->{path}: branch has no branch $src_br, skipping.";
-      next;
-    }
-
-    if (not $dst_rev) {
-      push @warn, "$prj->{path}: branch has no branch $remote/$dst_br, skipping.";
-      next;
-    }
-
-    # skip if there is nothing to do
-    next if $src_rev eq $dst_rev;
-
-    my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
-    if (not @commits) {
-      push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
-      next;
-    }
-
-    # check the number of changes for this branch
-    my $num_changes = scalar(@commits);
-    if ($num_changes > 1) {
-      push @warn, "$prj->{path}: branch $src_br has more than one ($num_changes) change for $rem_br";
-      $approve = 1;
-    }
-
-    # check if all commits have change IDs
-    foreach my $c (@commits) {
-      my @cmt = $r->cat_object($c);
-      if (not grep /^Change-Id:/, @cmt) {
-        push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
-        next;
-      }
-    }
-
-    push @good_projects, [ $prj, $src_br, $dst_br ];
+    push @good_projects, [ $prj, $src_br, $dst_br ] if $upload;
   }
 
   if (@$err) {
