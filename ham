@@ -16,8 +16,7 @@ my $prog = 'ham';
 
 sub filter_projects
 {
-  my $projects = shift;
-  my $argv  = shift;
+  my ($projects, $argv) = @_;
   $argv = \@ARGV unless defined $argv;
 
   if (defined $argv->[0]) {
