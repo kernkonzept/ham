@@ -9,6 +9,7 @@ use Git::Repository;
 use URI;
 use IO::Select;
 use Cwd;
+use JSON;
 
 $ENV{LC_ALL} = 'C';
 
@@ -1349,6 +1350,48 @@ sub cmd_upload($$$)
   }
 }
 
+
+##############################################################
+sub fetch_and_co_changes
+{
+  my ($opts, $prjs, $changes) =  @_;
+
+  my $q = Process_queue->new();
+  foreach my $prj (values %$prjs) {
+    my $remote_name = $prj->{_remote}->{name};
+    my $c = $changes->{$prj->{name}};
+    my $change = $c->{change};
+    my $patchset = $c->{patchset};
+
+    $q->queue(sub { $prj->fetch($remote_name, "refs/changes/".($change % 100)."/".$change."/".$patchset); });
+  }
+
+  $q->work;
+
+  if (@$err) {
+    print_errors();
+    exit(128);
+  }
+
+  my $action;
+
+  if (defined $opts->{pull}) {
+    $action = sub { push @$info, $_[0]->git->run('merge', 'FETCH_HEAD'); };
+  } elsif (defined $opts->{'cherry-pick'}) {
+    $action = sub { push @$info, $_[0]->git->run('cherry-pick', 'FETCH_HEAD'); };
+  } else {
+    $action = sub { $_[0]->checkout('FETCH_HEAD'); };
+  }
+
+  foreach my $prj (values %$prjs) {
+    $action->($prj);
+  }
+
+  print_errors(no_prefix => 1);
+}
+
+
+###### download ####################################
 $commands->add(download => Subcommand->new(
   syn => [
     '%c %o <project> <change-nr>[/<patchset>]',
@@ -1375,21 +1418,99 @@ $commands->add(download => Subcommand->new(
       $cmd->usage_error($command, "error: invalid change/patchset format '$change'");
     }
 
-    my $remote_name = $prj->{_remote}->{name};
+    fetch_and_co_changes($opts, { $prjn => $prj }, { $prjn => { change => $change, patchset => $patchset }});
+  }
+));
 
-    my $q = Process_queue->new();
-    $q->queue(sub { $prj->fetch($remote_name, "refs/changes/".($change % 100)."/".$change."/".$patchset); });
-    $q->work;
 
-    print_errors();
-    if (defined $opts->{pull}) {
-      push @$info, $prj->git->run('merge', 'FETCH_HEAD');
-    } elsif (defined $opts->{'cherry-pick'}) {
-      push @$info, $prj->git->run('cherry-pick', 'FETCH_HEAD');
-    } else {
-      $prj->checkout('FETCH_HEAD');
+###### download-id ####################################
+$commands->add('download-id' => Subcommand->new(
+  syn => [
+    '%c %o <change-id> [<project>...]',
+    [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
+                             instead of checking out the change| ],
+    [ 'pull|p',            q|Pull (merge) the change into the current branch|]
+  ],
+  desc => q|Download all changes for all projects with the given change ID (Change-Id)
+            to your local working copy|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+    my $change_id = shift @ARGV;
+    $cmd->usage_error($command, "error: missinng change id") unless defined $change_id;
+    my $prjs = filter_projects(load_projects());
+    my %queries = ();
+    foreach my $p (values %$prjs) {
+      my $uri = URI->new($p->{_remote}->{fetch});
+      if ($uri->scheme eq 'ssh') {
+        my $query = 'ssh';
+        $query .= ' -p '.$uri->_port if defined $uri->_port;
+        $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
+        $query .= ' '.$uri->host;
+        $query .= " gerrit query --patch-sets --format=JSON $change_id";
+        $queries{$query} = 1;
+      } else {
+        push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
+      }
     }
-    print_errors(no_prefix => 1);
+
+    if (not %queries) {
+      print_errors();
+      print STDERR "error: no matching project found\n";
+      exit (1);
+    }
+
+    my @changes = ();
+
+    foreach my $query (keys %queries) {
+      my @json = qx($query);
+      foreach my $j (@json) {
+        my $q = from_json($j);
+        if (not defined $q) {
+          push @$err, "gerrit did not return a JSON string but '$json[0]'";
+          next;
+        }
+        if (defined $q->{type} and $q->{type} eq 'error') {
+          push @$err, "gerrit returned an error: '$q->{message}'";
+          next;
+        }
+        next if defined $q->{type} and $q->{type} eq 'stats';
+        if (not defined $q->{project} or not defined $q->{id}
+            or not defined $q->{patchSets} or not defined $q->{number}) {
+          push @$err, "the query result seems to be no change '$json[0]'";
+          next;
+        }
+
+        push @changes, $q;
+      }
+    }
+
+    if (@$err) {
+      print_errors();
+      exit(128);
+    }
+
+    if (not @changes) {
+      print STDERR "no changes for id $change_id found\n";
+      exit(0);
+    }
+
+    $prjs = filter_projects($prjs, [ map { $_->{project} } @changes ]);
+    if (not %$prjs) {
+      print STDERR "no matching projects for id $change_id found\n";
+      exit(0);
+    }
+
+    print "found change $change_id in the following projects:\n". join(' ', sort keys %$prjs)."\n";
+    my %get_change = ();
+    foreach my $c (@changes) {
+      my $x = { change => $c->{number}, patchset => 1 };
+      $get_change{$c->{project}} = $x;
+      foreach my $p (@{$c->{patchSets}}) {
+        $x->{ps} = $p->{number} if $x->{patchset} < $p->{number};
+      }
+    }
+
+    fetch_and_co_changes($opts, $prjs, \%get_change);
   }
 ));
 
