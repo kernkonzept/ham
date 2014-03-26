@@ -1378,7 +1378,7 @@ $commands->add(download => Subcommand->new(
     my $remote_name = $prj->{_remote}->{name};
 
     my $q = Process_queue->new();
-    $q->queue(sub { $prj->fetch($remote_name, "refs/changes/".substr($change,0,2)."/".$change."/".$patchset); });
+    $q->queue(sub { $prj->fetch($remote_name, "refs/changes/".($change % 100)."/".$change."/".$patchset); });
     $q->work;
 
     print_errors();
