@@ -219,6 +219,12 @@ package Subcommand {
     exit(129);
   }
 
+  sub usage_error
+  {
+    print STDERR "$_[2]\n";
+    shift->print_usage($_[0], *STDERR);
+  }
+
   sub _print_usage
   {
     my ($subcmd, $cmd, $out) = @_;
