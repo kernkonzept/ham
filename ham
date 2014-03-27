@@ -835,7 +835,7 @@ package Project {
     my $git = $r->git;
     if (not $git) {
       push @$err, "$r->{name} in $r->{path} is no git repo (may be you need 'sync')";
-      return;
+      return 128;
     }
 
     my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
@@ -847,23 +847,23 @@ package Project {
 
     if (grep /invalid reference: $branch/, @cerr) {
       push @$info, "$r->{name} has no refernece $branch, stay at the previous head ($head)";
-      return;
+      return 128;
     }
     if (grep /(Already on )|(Switched to branch )'$branch'/, @cerr) {
-      return;
+      return 128;
     }
 
     if (grep /Switched to a new branch /, @cerr) {
       # this happens for the initial checkout of a remote branch
-      return;
+      return 128;
     }
 
     if (@cerr) {
       push @$err, "$r->{name} in $r->{path}";
       chomp(@cerr);
       push @$err, @cerr;
-      return;
     }
+    return $cmd->exit;
   }
 
   ## sync #############################################
@@ -899,6 +899,7 @@ package Project {
       print "project: $self->{name} at ".$self->abs_path."\n";
       print join("\n", @s)."\n";
     }
+    return;
   }
 
   sub check_for_upload()
@@ -1001,10 +1002,12 @@ sub foreach_repo_r($$@)
   my $total = scalar(@$projects);
   foreach my $r (@$projects) {
     print STDERR "\r\e[K($cnt/$total) " if $progress;
-    $func->($r, @args);
+    my $res = $func->($r, @args);
+    return $res if $res;
     $cnt++;
   }
   print STDERR "\n" if $progress and $total;
+  0;
 }
 
 sub print_errors
@@ -1014,13 +1017,28 @@ sub print_errors
     print "$i\n";
   }
 
+  $info = [];
+
   my $errpfx = defined $opts{no_prefix} ? '' : 'error: ';
   foreach my $e (@$err) {
     print STDERR "$errpfx$e\n";
   }
 
-  $info = [];
+  if ($opts{err_msg} and @$err) {
+    print STDERR "$opts{err_msg}\n";
+  }
+
+  if ($opts{exit} and @$err) {
+    exit($opts{exit});
+  }
+
+  if ($opts{err_val} and @$err) {
+    $err = [];
+    return $opts{err_val};
+  }
   $err = [];
+
+  return 0;
 }
 
 sub sorted_and_filtered_projects
@@ -1036,16 +1054,10 @@ sub foreach_repo($@)
   my ($func, $prjs, $progress, @args) = @_;
   $prjs = \@ARGV unless defined $prjs;
 
-  foreach_repo_r($func, sorted_and_filtered_projects($prjs), $progress, @args);
+  my $res = foreach_repo_r($func, sorted_and_filtered_projects($prjs), $progress, @args);
   print_errors();
+  return $res;
 }
-
-sub forall
-{
-  my ($what, @args) = @_;
-  foreach_repo(eval '\&Project::'.$what, \@ARGV, 0, @args);
-}
-
 
 ####### list projects #################################
 $commands->add(list => Subcommand->new(
@@ -1056,7 +1068,7 @@ $commands->add(list => Subcommand->new(
 
 sub cmd_list_projects($$)
 {
-  foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; }, \@ARGV);
+  foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; return 0; }, \@ARGV);
 }
 
 
@@ -1114,6 +1126,7 @@ sub cmd_init($)
   }
 
   place_commit_msg_hook();
+  return 0;
 }
 
 
@@ -1139,17 +1152,19 @@ sub cmd_sync($$)
   foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
   $q->work;
 
-  print_errors();
+  print_errors(exit => 128);
   print STDERR "Preparing gits .....................\n";
 
   $_->prepare foreach @$projects;
-  print_errors();
+  print_errors(exit => 128);
+
+  return 0;
 }
 
 
 ###### status #########################################
 $commands->add(status => Subcommand->new(
-  cmd  => sub { forall('status') },
+  cmd  => sub { foreach_repo(sub { shift->status; 0;}) },
   syn  => '%c [<project>...]',
   desc => 'show the status of all projects'
 ));
@@ -1161,6 +1176,7 @@ $commands->add(forall => Subcommand->new(
   syn => [
     '%c [<project>...] %o -- <cmd> [<arg>...]',
     { pre_args => 1 },
+    [ 'abort-on-errors|e' , 'Abort if a command exits with an exitcode other than zero' ],
     [ 'p',   'print project name before each execution of <cmd>' ]
   ],
   desc => 'run <cmd> for all projects'
@@ -1177,21 +1193,27 @@ sub cmd_forall($$$)
 
   my $cwd = getcwd;
 
-  foreach_repo(sub {
+  my $res = foreach_repo(sub {
       my $r = shift;
       print "$r->{name}: $r->{path}\n" if $print_prj;
       chdir $r->abs_path;
-      system(@ARGV);
+      my $res = system(@ARGV);
+      return ($res) if $res and $opt->{'abort-on-errors'};
+      return 0;
     }, $opt->{__PREARGS});
 
   chdir $cwd;
+  return $res;
 }
 
 
 ####### checkout ################################
 $commands->add(checkout => Subcommand->new(
   cmd  => \&cmd_checkout,
-  syn  => '%c <branch> [<project>...]',
+  syn  => [
+    '%c <branch> [<project>...]',
+    [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be interated' ]
+  ],
   desc => 'checkout <branch> in all projects'
 ));
 
@@ -1199,9 +1221,15 @@ $commands->alias(co => 'checkout');
 
 sub cmd_checkout
 {
+  my ($opts, $command, $cmd) = @_;
   my $branch = shift @ARGV;
-  $_[2]->print_usage($_[1]) unless defined $branch;
-  forall('checkout', $branch);
+  $cmd->print_usage($command) unless defined $branch;
+  my $abt = $opts->{'abort-on-errors'};
+  return foreach_repo(sub {
+      my $r = shift->checkout($branch);
+      return $r if $r and $abt;
+      return 0;
+    });
 }
 
 
@@ -1225,7 +1253,7 @@ sub cmd_start
   my @args = ('--track', '-b', $branch);
   push @args, $base if defined $base and $base ne '';
 
-  forall('checkout', @args);
+  return foreach_repo(sub { shift->checkout(@args) });
 }
 
 
@@ -1241,13 +1269,15 @@ sub cmd_info($$)
 
   foreach_repo(sub {
   }, \@ARGV);
+
+  0;
 }
 
 
 ###### remote #######################################
 $commands->add(
   remote => Subcommand->new(
-    cmd => sub { $_[2]->print_usage($_[1]); },
+    cmd => sub { $_[2]->print_usage($_[1]); 0; },
     syn => '%c',
     desc => 'manage remotes for all projects'
   )
@@ -1276,6 +1306,7 @@ sub cmd_remote_add($$)
     #print $url, " => ", $rurl, "\n";
     $r->git->run(remote => 'add', $name, $rurl->as_string);
   });
+  return 0;
 }
 
 
@@ -1333,7 +1364,7 @@ sub cmd_upload($$$)
   if (@$err) {
     print_errors();
     print STDERR "Aborting\n";
-    exit(1);
+    return 1;
   }
 
   if (@warn) {
@@ -1385,6 +1416,8 @@ sub cmd_upload($$$)
       push @$info, $r->run('push', $prj->{remote}, "$src_br:$dst_ref");
     }
   }
+
+  return 0;
 }
 
 
@@ -1405,10 +1438,7 @@ sub fetch_and_co_changes
 
   $q->work;
 
-  if (@$err) {
-    print_errors();
-    exit(128);
-  }
+  print_errors(exit => 128);
 
   my $action;
   my @log;
@@ -1439,7 +1469,7 @@ sub fetch_and_co_changes
     $action->($prj);
   }
 
-  print_errors();
+  my $res = print_errors(err_val => 128);
 
   print "changes:\n";
   foreach my $log (sort { $a->[0]->{name} cmp $b->[0]->{name} } @log) {
@@ -1455,6 +1485,8 @@ sub fetch_and_co_changes
 
     print "  $prj->{name} [$remote_name]: $msg\n";
   }
+
+  return $res;
 }
 
 
@@ -1485,7 +1517,10 @@ $commands->add(download => Subcommand->new(
       $cmd->usage_error($command, "error: invalid change/patchset format '$change'");
     }
 
-    fetch_and_co_changes($opts, { $prjn => $prj }, { $prjn => { change => $change, patchset => $patchset }});
+    return fetch_and_co_changes($opts,
+      { $prjn => $prj },
+      { $prjn => { change => $change, patchset => $patchset }}
+    );
   }
 ));
 
@@ -1554,10 +1589,7 @@ $commands->add('download-id' => Subcommand->new(
       }
     }
 
-    if (@$err) {
-      print_errors();
-      exit(128);
-    }
+    print_errors(exit => 128);
 
     if (not @changes) {
       print STDERR "no changes for id $change_id found\n";
@@ -1569,7 +1601,7 @@ $commands->add('download-id' => Subcommand->new(
       print STDERR "no matching projects for id $change_id found\n";
       print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
       print STDERR "prjs w/ change: ".join(' ', sort map { $_->{project} } @changes)."\n";
-      exit(0);
+      exit(1);
     }
 
     $prjs = $prjs2;
