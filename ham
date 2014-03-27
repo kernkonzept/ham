@@ -902,7 +902,7 @@ package Project {
     my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
     if (not @commits) {
       push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
-      return 'error';
+      return 0;
     }
 
     # check if all commits have change IDs
@@ -910,7 +910,7 @@ package Project {
       my @cmt = $r->cat_object($c);
       if (not grep /^Change-Id:/, @cmt) {
         push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
-        return 'error';
+        return 0;
       }
     }
 
@@ -919,7 +919,7 @@ package Project {
     if ($num_changes > 1) {
       if (not defined $approve_cb or not $approve_cb->($prj, \@commits)) {
         push @$err, "$prj->{path}: branch $src_br has more than one ($num_changes) change for $rem_br";
-        return 'error';
+        return 0;
       }
     }
     return 1;
