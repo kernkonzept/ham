@@ -179,7 +179,7 @@ package Subcommand {
   sub alias
   {
     my ($self, $name, $orig) = @_;
-    $self->{sub}->{$name} = $self->sub->{$orig};
+    $self->{alias}->{$name} = [ split(/\s+/, $orig) ];
   }
 
   sub sub { return $_[0]->{sub}; }
@@ -197,13 +197,20 @@ package Subcommand {
       return $self->_exec($command);
     }
 
-    my $subcmd = shift @ARGV;
-    my $s = $self->sub->{$subcmd};
-    if (not defined $s) {
-      print STDERR "error: unknown command $command $subcmd\n";
-      $self->print_usage($command, *STDERR); # exits
+    while (1) {
+      my $subcmd = shift @ARGV;
+      my $s = $self->sub->{$subcmd};
+      if (not defined $s) {
+        my $alias = $self->{alias}->{$subcmd};
+        if (defined $alias) {
+          unshift @ARGV, @$alias;
+          next;
+        }
+        print STDERR "error: unknown command $command $subcmd\n";
+        $self->print_usage($command, *STDERR); # exits
+      }
+      return $s->run("$command $subcmd");
     }
-    return $s->run("$command $subcmd");
   }
 
   sub _exec
@@ -215,7 +222,10 @@ package Subcommand {
 
   sub print_usage
   {
+    my $out = defined $_[2] ? $_[2] : *STDERR;
+    my $old = select($out);
     shift->_print_usage(@_);
+    select($old);
     exit(129);
   }
 
@@ -225,10 +235,9 @@ package Subcommand {
     shift->print_usage($_[0], *STDERR);
   }
 
-  sub _print_usage
+  sub _print_usage(**)
   {
-    my ($subcmd, $cmd, $out) = @_;
-    $out = *STDERR unless defined $out;
+    my ($subcmd, $cmd) = @_;
 
     sub strip_spaces($)
     {
@@ -271,11 +280,28 @@ format OPTION =
       print "\n";
     }
 
-    return unless $subcmd->sub;
-    foreach my $c (sort keys %{$subcmd->sub}) {
-      my $d =$subcmd->sub->{$c};
-      $d->_print_usage("$cmd $c", $out);
-      print $out "\n";
+    if (defined $subcmd->sub) {
+      #print "  SUB COMMANDS\n";
+      foreach my $c (sort keys %{$subcmd->sub}) {
+        my $d =$subcmd->sub->{$c};
+        $d->_print_usage("$cmd $c");
+        print "\n";
+      }
+    }
+
+    if (defined $subcmd->{alias}) {
+      print "  ALIASES\n";
+      foreach my $c (sort keys %{$subcmd->{alias}}) {
+        my $a = join(' ', @{$subcmd->{alias}->{$c}});
+format ALIAS =
+        @<<<<<<<<<<<<<<<<<<... =  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        $c                        $a
+~~                                ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                  $a
+.
+        $~ = 'ALIAS';
+        write;
+      }
     }
   }
 
@@ -1463,6 +1489,9 @@ $commands->add(download => Subcommand->new(
   }
 ));
 
+$commands->alias('cherry-pick' => 'download -c');
+$commands->alias('merge' => 'download -p');
+
 
 ###### download-id ####################################
 $commands->add('download-id' => Subcommand->new(
@@ -1558,6 +1587,9 @@ $commands->add('download-id' => Subcommand->new(
     fetch_and_co_changes($opts, $prjs, \%get_change);
   }
 ));
+
+$commands->alias('cherry-pick-id' => 'download-id -c');
+$commands->alias('merge-id' => 'download-id -p');
 
 
 ## the main program #####################################
