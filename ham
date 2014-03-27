@@ -1385,13 +1385,28 @@ sub fetch_and_co_changes
   }
 
   my $action;
+  my @log;
 
   if (defined $opts->{pull}) {
     $action = sub { push @$info, $_[0]->git->run('merge', 'FETCH_HEAD'); };
+      my $git = $_[0]->git;
+      my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
+      push @$info, $git->run('merge', 'FETCH_HEAD');
+      push @log, [ $_[0], "merged %c/%p into $head" ];
+    };
   } elsif (defined $opts->{'cherry-pick'}) {
     $action = sub { push @$info, $_[0]->git->run('cherry-pick', 'FETCH_HEAD'); };
+      my $git = $_[0]->git;
+      my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
+      push @$info, $git->run('cherry-pick', 'FETCH_HEAD');
+      push @log, [ $_[0], "cherry picked %c/%p onto $head" ];
+    };
   } else {
-    $action = sub { $_[0]->checkout('FETCH_HEAD'); };
+    $action = sub {
+      my $git = $_[0]->git;
+      $_[0]->checkout('--detach', '-q', 'FETCH_HEAD');
+      push @log, [ $_[0], "checked out %c/%p as detached HEAD" ];
+    };
   }
 
   foreach my $prj (values %$prjs) {
@@ -1399,6 +1414,21 @@ sub fetch_and_co_changes
   }
 
   print_errors(no_prefix => 1);
+
+  print "changes:\n";
+  foreach my $log (sort { $a->[0]->{name} cmp $b->[0]->{name} } @log) {
+    my $prj = $log->[0];
+    my $msg = $log->[1];
+    my $remote_name = $prj->{_remote}->{name};
+    my $c = $changes->{$prj->{name}};
+    my $change = $c->{change};
+    my $patchset = $c->{patchset};
+
+    $msg =~ s,%c,$change,g;
+    $msg =~ s,%p,$patchset,g;
+
+    print "  $prj->{name} [$remote_name]: $msg\n";
+  }
 }
 
 
