@@ -902,6 +902,65 @@ package Project {
     return;
   }
 
+  sub check_rev_list($$$$)
+  {
+    my ($prj, $r, $src_br, $rev_list) = @_;
+
+    my @no_chid = ();
+    my %duplicate_chid = ();
+    my @duplicate_chid = ();
+    my @multiple_chid = ();
+
+    foreach my $c (@$rev_list) {
+      my @cmt = $r->cat_object($c);
+      my @chid = grep /^Change-Id:/, @cmt;
+      if (not @chid) {
+        push @no_chid, $c;
+        next;
+      } elsif (scalar(@chid) > 1) {
+        push @multiple_chid, $c;
+        next;
+      }
+
+      my $chid = $chid[0];
+      $chid =~ s/^Change-Id:\s*(\S+)/$1/;
+
+      if ($chid eq '') {
+        push @no_chid, $c;
+        next;
+      }
+
+      if ($duplicate_chid{$chid}) {
+        push @{$duplicate_chid{$chid}}, $c;
+        push @duplicate_chid, $chid;
+        next;
+      } else {
+        $duplicate_chid{$chid} = [ $c ];
+      }
+    }
+
+    my $list_errors = sub
+    {
+      my ($msg, $e) = @_;
+      return unless @$e;
+      push @$err, "$prj->{path}: branch $src_br: $msg";
+      foreach my $c (@$e) {
+        my $x = $r->run('log', '-n', '1' ,'--oneline', '--color=always', $c);
+        push @$err, "  $x";
+      }
+    };
+
+    $list_errors->("the following commits have no change ID", \@no_chid);
+    $list_errors->("the following commits have multiple chage IDs", \@multiple_chid);
+    foreach my $id (@duplicate_chid) {
+      $list_errors->("the following commits have the same change ID (you should squash them)",
+                     $duplicate_chid{$id});
+    }
+
+    return 0 if @no_chid or @multiple_chid or @duplicate_chid;
+    return 1;
+  }
+
   sub check_for_upload()
   {
     my ($prj, $warn, $src_br, $dst_br, $approve_cb) = @_;
@@ -933,13 +992,7 @@ package Project {
     }
 
     # check if all commits have change IDs
-    foreach my $c (@commits) {
-      my @cmt = $r->cat_object($c);
-      if (not grep /^Change-Id:/, @cmt) {
-        push @$err, "$prj->{path}: branch $src_br has commits without a change id (Change-Id)";
-        return 0;
-      }
-    }
+    return 0 unless $prj->check_rev_list($r, $src_br, \@commits);
 
     # check the number of changes for this branch
     my $num_changes = scalar(@commits);
