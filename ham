@@ -1414,14 +1414,14 @@ sub fetch_and_co_changes
   my @log;
 
   if (defined $opts->{pull}) {
-    $action = sub { push @$info, $_[0]->git->run('merge', 'FETCH_HEAD'); };
+    $action = sub {
       my $git = $_[0]->git;
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       push @$info, $git->run('merge', 'FETCH_HEAD');
       push @log, [ $_[0], "merged %c/%p into $head" ];
     };
   } elsif (defined $opts->{'cherry-pick'}) {
-    $action = sub { push @$info, $_[0]->git->run('cherry-pick', 'FETCH_HEAD'); };
+    $action = sub {
       my $git = $_[0]->git;
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       push @$info, $git->run('cherry-pick', 'FETCH_HEAD');
@@ -1439,7 +1439,7 @@ sub fetch_and_co_changes
     $action->($prj);
   }
 
-  print_errors(no_prefix => 1);
+  print_errors();
 
   print "changes:\n";
   foreach my $log (sort { $a->[0]->{name} cmp $b->[0]->{name} } @log) {
