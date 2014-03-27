@@ -949,7 +949,7 @@ package Project {
         return 0;
       }
     }
-    return 1;
+    return wantarray ? (1, $src_br, $dst_br) : 1;
   }
 
 }
