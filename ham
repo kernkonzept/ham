@@ -76,6 +76,17 @@ package Options {
         push @pre_args, shift @ARGV;
       }
     }
+
+    if (defined $self->{conf}->{'extra_args'}) {
+      for (my $i = 0; $i < scalar(@ARGV); $i++) {
+        if ($ARGV[$i] eq '--') {
+          $self->{opt}->{__EXTRA_ARGS} = [ @ARGV[$i+1 .. $#ARGV] ];
+          @ARGV = $i > 0 ? @ARGV[0 .. $i-1] : ();
+          last;
+        }
+      }
+    }
+
     my $res = GetOptions($self->{opt}, map { $_->[0] } @{$self->{options}});
     $self->{opt}->{__PREARGS} = \@pre_args;
     return $res;
