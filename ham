@@ -78,6 +78,7 @@ package Options {
     }
 
     if (defined $self->{conf}->{'extra_args'}) {
+      $self->{opt}->{__EXTRA_ARGS} = [];
       for (my $i = 0; $i < scalar(@ARGV); $i++) {
         if ($ARGV[$i] eq '--') {
           $self->{opt}->{__EXTRA_ARGS} = [ @ARGV[$i+1 .. $#ARGV] ];
