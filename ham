@@ -1763,28 +1763,30 @@ $commands->alias('merge-id' => 'download-id -p');
 ###### diff ####################################
 $commands->add(diff => Subcommand->new(
   syn => [
-    '%c %o [<range>] -- [<project>...]',
+    '%c %o [<commit>][..|...| ][<commit>] -- [<project>...]',
     { extra_args => 1 },
   ],
-  desc => q|Create a diff including all given projects|,
+  desc => qq|Create a diff including all given projects.\r
+             the <commit> parameters are equvalent to the parameters for git diff.
+             However, there is the special commit {UPSTREAM} that corresponds to the
+             revision that is specified in the manifest file.|,
+
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
-    my $range = shift @ARGV;
+    my @args = @ARGV;
     foreach_repo(sub {
         my $prj = shift;
         my $git = $prj->git;
         #print "$prj->{name}\n";
 
         my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
-
-        $range =~ s,\{UPSTREAM\},$upstream,g if $range;
-
-        my @range = $range ? ($range) : ();
+        my @a = @ARGV;
+        s,\{UPSTREAM\},$upstream,g foreach @a;
 
         $git->run('diff',
                   '--src-prefix='.File::Spec->catdir('a', $prj->{path}).'/',
                   '--dst-prefix='.File::Spec->catdir('b', $prj->{path}).'/',
-                  @range, '--', sub { print "$_\n";} );
+                  @a, '--', sub { print "$_\n";} );
         return 0;
     }, $opts->{__EXTRA_ARGS});
   }
