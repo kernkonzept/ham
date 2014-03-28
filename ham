@@ -1729,6 +1729,37 @@ $commands->alias('cherry-pick-id' => 'download-id -c');
 $commands->alias('merge-id' => 'download-id -p');
 
 
+###### download ####################################
+$commands->add(diff => Subcommand->new(
+  syn => [
+    '%c %o [<range>] -- [<project>...]',
+    { extra_args => 1 },
+  ],
+  desc => q|Create a diff including all given projects|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+    my $range = shift @ARGV;
+    foreach_repo(sub {
+        my $prj = shift;
+        my $git = $prj->git;
+        #print "$prj->{name}\n";
+
+        my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
+
+        $range =~ s,\{UPSTREAM\},$upstream,g if $range;
+
+        my @range = $range ? ($range) : ();
+
+        $git->run('diff',
+                  '--src-prefix='.File::Spec->catdir('a', $prj->{path}).'/',
+                  '--dst-prefix='.File::Spec->catdir('b', $prj->{path}).'/',
+                  @range, '--', sub { print "$_\n";} );
+        return 0;
+    }, $opts->{__EXTRA_ARGS});
+  }
+));
+
+
 ## the main program #####################################
 exit($commands->run($prog));
 
