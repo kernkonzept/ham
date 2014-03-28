@@ -859,7 +859,8 @@ package Project {
   {
     my $r = shift;
     my @args = @_;
-    my $branch = (grep { not /^-/ } @args)[0];
+    my $branch = \(grep { not /^-/ } @args)[0];
+    $$branch =~ s,\{UPSTREAM\},$r->{revision},g;
 
     my $git = $r->git;
     if (not $git) {
@@ -868,17 +869,17 @@ package Project {
     }
 
     my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-    return if defined $head and $head eq $branch;
+    return if defined $head and $head eq $$branch;
     $head = '' unless defined $head;
 
     my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
     my @cerr = $cmd->stderr->getlines;
 
-    if (grep /invalid reference: $branch/, @cerr) {
-      push @$info, "$r->{name} has no refernece $branch, stay at the previous head ($head)";
+    if (grep /invalid reference: $$branch/, @cerr) {
+      push @$info, "$r->{name} has no refernece $$branch, stay at the previous head ($head)";
       return 128;
     }
-    if (grep /(Already on )|(Switched to branch )'$branch'/, @cerr) {
+    if (grep /(Already on )|(Switched to branch )'$$branch'/, @cerr) {
       return 128;
     }
 
