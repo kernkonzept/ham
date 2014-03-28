@@ -1296,7 +1296,8 @@ $commands->add(forall => Subcommand->new(
     '%c [<project>...] %o -- <cmd> [<arg>...]',
     { pre_args => 1 },
     [ 'abort-on-errors|e' , 'Abort if a command exits with an exitcode other than zero' ],
-    [ 'p',   'print project name before each execution of <cmd>' ]
+    [ 'p',                  'print project name before each execution of <cmd>' ],
+    [ 'vars|i',           qq|prelace special '{...}' tokens within the arguments| ],
   ],
   desc => 'run <cmd> for all projects'
 ));
@@ -1316,7 +1317,12 @@ sub cmd_forall($$$)
       my $r = shift;
       print "$r->{name}: $r->{path}\n" if $print_prj;
       chdir $r->abs_path;
-      my $res = system(@ARGV);
+      my @argv = @ARGV;
+      if ($opt->{vars}) {
+        my $upstream = "refs/remotes/$r->{_remote}->{name}/$r->{revision}";
+        s,\{UPSTREAM\},$upstream,g foreach @argv;
+      }
+      my $res = system(@argv);
       return ($res) if $res and $opt->{'abort-on-errors'};
       return 0;
     }, $opt->{__PREARGS});
