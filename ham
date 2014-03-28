@@ -1798,6 +1798,71 @@ $commands->add(diff => Subcommand->new(
   }
 ));
 
+###### rev-list ####################################
+$commands->add('rev-list' => Subcommand->new(
+  syn => [
+    '%c %o [<revisions>...] -- [<project>...]',
+    { extra_args => 1 },
+  ],
+  desc => qq|Print a git rev-list for each project.\r
+             The rev-list for ech project is printed on a single line
+             with the following layout:\r
+             <project name>: SP <rev> SP ...|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+    my @args = @ARGV;
+    foreach_repo(sub {
+        my $prj = shift;
+        my $git = $prj->git;
+        #print "$prj->{name}\n";
+
+        my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
+        my @a = @ARGV;
+        s,\{UPSTREAM\},$upstream,g foreach @a;
+
+        my @revs = $git->run('rev-list', @a, '--');
+        print "$prj->{name}: ".join(' ', @revs)."\n" if @revs;
+        return 0;
+    }, $opts->{__EXTRA_ARGS});
+  }
+));
+
+###### rev-list ####################################
+$commands->add('log' => Subcommand->new(
+  syn => [
+    '%c %o [<revision>...] -- [<project>...]',
+    { extra_args => 1 },
+  ],
+  desc => qq|Print a git log for each project.|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+    my @args = @ARGV;
+    foreach_repo(sub {
+        my $prj = shift;
+        my $git = $prj->git;
+
+        my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
+        my @a = @ARGV;
+        s,\{UPSTREAM\},$upstream,g foreach @a;
+
+        my $first = 1;
+        my @revs = $git->run('log', '--color=always', @a, '--', sub {
+            if ($first) {
+              $first = 0;
+              print "$prj->{name}: $prj->{path}\n";
+            }
+            print "  $_\n";
+          });
+
+        print "\n" unless $first;
+
+        return 0;
+    }, $opts->{__EXTRA_ARGS});
+  }
+));
+
+
+
 
 ## the main program #####################################
 exit($commands->run($prog));
