@@ -201,11 +201,11 @@ package Subcommand {
     return ($self->{opt}->usage(@_), $self->{desc});
   }
 
-  sub run
+  sub find
   {
     my ($self, $command) = @_;
     if (not defined $self->sub or not @ARGV or substr($ARGV[0],0,1) eq '-') {
-      return $self->_exec($command);
+      return (1, $self, $command);
     }
 
     while (1) {
@@ -217,11 +217,24 @@ package Subcommand {
           unshift @ARGV, @$alias;
           next;
         }
-        print STDERR "error: unknown command $command $subcmd\n";
-        $self->print_usage($command, *STDERR); # exits
+        return (undef, $self, $command, $subcmd);
       }
-      return $s->run("$command $subcmd");
+      return $s->find("$command $subcmd");
     }
+  }
+
+  sub run
+  {
+    my ($self, $command) = @_;
+    my $ok = 0;
+    my $subcmd;
+    ($ok, $self, $command, $subcmd) = $self->find($command);
+    if (not $ok) {
+      print STDERR "error: unknown command $command $subcmd\n";
+      $self->print_usage($command, *STDERR); # exits
+    }
+
+    return $self->_exec($command);
   }
 
   sub _exec
@@ -320,10 +333,27 @@ format ALIAS =
 
 ###### the main command (no command given) ############################
 my $commands = Subcommand->new(
-  cmd  => sub { $_[2]->print_usage($_[1]); },
+  cmd  => sub { $_[2]->print_usage($_[1], *STDOUT); },
   syn  => '%c',
   desc => 'print help'
 );
+
+$commands->add(help => Subcommand->new(
+  cmd => sub {
+    if (@ARGV) {
+      my ($ok, $cmd, $command, $sub) = $commands->find($prog);
+      if ($ok) {
+        $cmd->print_usage($command, *STDOUT);
+      } else {
+        print STDERR "error: unknown command $command $sub\n";
+        $cmd->print_usage($command, *STDERR);
+      }
+    }
+    $commands->print_usage($prog, *STDOUT);
+  },
+  syn => '%c',
+  desc => 'print help'
+));
 
 
 my $repo_dir;
