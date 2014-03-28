@@ -745,14 +745,32 @@ package Project {
   ## do a conditional checkout for sync
   sub sync_checkout
   {
-    my $self = shift;
+    my ($self, $opts) = @_;
     my $git = $self->git($err);
     return 0 unless defined $git;
 
     my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
 
     # return if we have already a valid checkout, don't touch the working copy
-    return 1 if defined $head;
+    if (defined $head) {
+      return 1 unless $opts->{rebase};
+
+      if ($head ne $self->{revision}) {
+        push @$info, "$self->{path}: not on branch $self->{revision}, skip rebase";
+        return 1;
+      }
+
+      my $remote = $self->{_remote}->{name};
+      my $remote_ref_n = "refs/remotes/$remote/$head";
+      my $remote_ref = $git->rev_parse($remote_ref_n);
+      if (not $remote_ref) {
+        push @$info, "$self->{name}: no corresponding remote branch found ($head), skipping rebase";
+        return 1;
+      }
+
+      push @$info, map { "$self->{path}: $_" } $git->run('rebase', $remote_ref_n);
+      return 1;
+    }
 
     my $revision = $self->{revision};
     print STDERR "checkout $self->{name} @ $self->{path} ($revision)\n";
@@ -777,10 +795,10 @@ package Project {
   }
 
   ## prepare the git repo after sync, incl. checkout
-  sub prepare($)
+  sub prepare($$)
   {
-    my $self = shift;
-    return 0 unless $self->sync_checkout;
+    my ($self, $opts) = @_;
+    return 0 unless $self->sync_checkout($opts);
     my $git = $self->bare_git;
     if (defined $self->{_remote}->{review} and $self->{_remote}->{review} ne '') {
       my $hooks = $git->git_dir.'/hooks';
@@ -1197,12 +1215,17 @@ sub cmd_init($)
 ###### sync ###########################################
 $commands->add(sync => Subcommand->new(
   cmd  => \&cmd_sync,
-  syn  =>'%c [<project>...]',
+  syn  => [
+    '%c [<project>...]',
+    [ 'rebase',  q|rebase the current branch onto the
+                   corresponging branch in the projects remote| ]
+  ],
   desc => 'checkout/update all projects'
 ));
 
-sub cmd_sync($$)
+sub cmd_sync
 {
+  my ($opts, $command, $cmd) = @_;
   # update manifest repo, if there is any
   if (-d get_repo_dir().'/manifests/.git') {
     my $r = Git::Repository->new(work_tree => get_repo_dir().'/manifests');
@@ -1219,7 +1242,7 @@ sub cmd_sync($$)
   print_errors(exit => 128);
   print STDERR "Preparing gits .....................\n";
 
-  $_->prepare foreach @$projects;
+  $_->prepare($opts) foreach @$projects;
   print_errors(exit => 128);
 
   return 0;
