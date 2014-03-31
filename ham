@@ -1742,7 +1742,7 @@ $commands->add('download-id' => Subcommand->new(
       my $g = \$get_change{$c->{project}};
       $$g = [] unless defined $$g;
       foreach my $p (@{$c->{patchSets}}) {
-        $x->{ps} = $p->{number} if $x->{patchset} < $p->{number};
+        $x->{patchset} = $p->{number} if $x->{patchset} < $p->{number};
       }
       push @$$g, $x;
     }
