@@ -1213,10 +1213,25 @@ $commands->add(init => Subcommand->new(
 
 sub cmd_init($)
 {
-  die "fatal: $prog repo already initialized $repo_dir\n" if defined get_repo_dir(1);
-  $repo_dir = $repo_subdir;
   my $opt = shift;
   my $repo_dat_src = $opt->{file};
+  my $repodir = get_repo_dir(1);
+  if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_url')) {
+    open my $mf, "<".get_repo_dir().'/manifests_url' or die "cannot open manifest_url file: $!";
+    my $manifest_url = <$mf>;
+    close $mf;
+    chomp $manifest_url;
+    my $new_url = $opt->{url};
+    die "fatal: reinitializing ham directory without URL" if not defined $new_url;
+    die "fatal: ham directory already initialized for different URL $manifest_url" if $manifest_url ne $new_url;
+    print STDERR "warning: ham directory already initialized\n";
+    return 0;
+  } elsif (defined $repodir) {
+    print STDERR "fatal: half initialized ham directory, please cleanup\n";
+    exit(128);
+  }
+
+  $repo_dir = $repo_subdir;
   if (defined $opt->{url}) {
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
