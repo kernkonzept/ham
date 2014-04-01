@@ -787,8 +787,13 @@ package Project {
       return 1 unless $opts->{rebase};
 
       if ($head ne $self->{revision}) {
-        push @$info, "$self->{path}: not on branch $self->{revision}, skip rebase";
-        return 1;
+        if (defined $opts->{upstream}) {
+          $self->checkout($self->{revision});
+          $head = $git->rev_parse('--abbrev-ref', 'HEAD');
+        } else {
+          push @$info, "$self->{path}: not on branch $self->{revision}, skip rebase";
+          return 1;
+        }
       }
 
       my $remote = $self->{_remote}->{name};
@@ -1264,8 +1269,10 @@ $commands->add(sync => Subcommand->new(
   cmd  => \&cmd_sync,
   syn  => [
     '%c [<project>...]',
-    [ 'rebase',  q|rebase the current branch onto the
-                   corresponging branch in the projects remote| ]
+    [ 'rebase',   q|rebase the current branch onto the
+                    corresponging branch in the projects remote| ],
+    [ 'upstream', q|checkout theupstream revisions as defined in
+                    the manifest| ],
   ],
   desc => 'checkout/update all projects'
 ));
