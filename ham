@@ -1480,8 +1480,8 @@ $commands->add(upload => Subcommand->new(
     '%c %o [<project>...]',
     [ 't',               'Use branch name as topic' ],
     [ 'topic=s',         'Set <topic> as topic', { arg => '<topic>' } ],
-    [ 're|reviewers=s@', q|Add a reviewers. This option takes a comma separated
-                           list of reveiwers and may be supplied more than once|, { arg => '<reviewer>' } ],
+    [ 're|reviewers=s@', q|Add reviewers. This option takes a comma separated
+                           list of reviewers and may be supplied more than once|, { arg => '<reviewer>' } ],
     [ 'cc=s@',           q|Add email addresses for CC. This option takes a comma
                            separated list of email addresses and may be supplied
                            multiple times|,                                       { arg => '<cc-email>' } ],
