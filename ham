@@ -957,15 +957,38 @@ package Project {
   }
 
   ###### status #########################################
-  sub status($)
+  package Status {
+    sub is_different()
+    {
+      my $self = shift;
+      return $self->[0] =~ /##.*(ahead|behind)/;
+    }
+
+    sub is_dirty()      { scalar(@$_[0]) > 1; }
+    sub branch_status() { $_[0]->[0]; }
+    sub files()         { @{$_[0]}[1..$#{$_[0]}]; }
+    sub conflicts()     { grep { /^(U.|.U)/ } $_[0]->files; }
+    sub index()         { grep { /^[MARCD]/ } $_[0]->files; }
+    sub changed()       { grep { /^.[MD]/ } $_[0]->files; }
+    sub untracked()     { grep { /^\?\?/ } $_[0]->files; }
+  }
+
+  sub status
   {
     my $self = shift;
     my $r = $self->git($err);
     return unless $r;
     my @s = $r->run(status => '--porcelain', '-b');
-    if ($s[0] =~ /##.*(ahead|behind)/ or scalar(@s) > 1) {
+    return bless \@s, 'Status';
+  }
+
+  sub print_status($)
+  {
+    my $self = shift;
+    my $s = $self->status;
+    if ($s->is_different or $s->is_dirty) {
       print "project: $self->{name} at ".$self->abs_path."\n";
-      print join("\n", @s)."\n";
+      print join("\n", @$s)."\n";
     }
     return;
   }
@@ -1307,7 +1330,7 @@ sub cmd_sync
 
 ###### status #########################################
 $commands->add(status => Subcommand->new(
-  cmd  => sub { foreach_repo(sub { shift->status; 0;}) },
+  cmd  => sub { foreach_repo(sub { shift->print_status; 0;}) },
   syn  => '%c [<project>...]',
   desc => 'show the status of all projects'
 ));
