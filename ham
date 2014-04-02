@@ -11,6 +11,13 @@ use IO::Select;
 use Cwd;
 use JSON;
 
+eval { require Term::ANSIColor };
+if (!$@) {
+  import Term::ANSIColor qw(colored);
+} else {
+  sub colored { return $_[0]; }
+}
+
 $ENV{LC_ALL} = 'C';
 
 my $prog = 'ham';
@@ -1438,8 +1445,22 @@ $commands->add(info => Subcommand->new(
 
 sub cmd_info($$)
 {
-
   foreach_repo(sub {
+      my $p = shift;
+      my $g = $p->git;
+      my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
+      print colored("$p->{name}: in $p->{path}\n", 'bold');
+      print "  remote: $p->{remote} @ branch ".colored($p->{revision}, 'yellow')."\n";
+      print "  local revision: ".colored($head, 'yellow')."\n";
+      my $s = $p->status;
+      my $dirty = $s->is_dirty;
+      print "  status: ".$s->branch_status."\n" if $s->is_different;
+      print colored("          contains untracked files\n", 'red') if $s->untracked;
+      print colored("          contains uncommited changes in the index\n", 'green') if $s->index;
+      print colored("          contains modifications in the working copy\n", 'red') if $s->changed;
+      print colored("          has merge conflicts\n", 'bold', 'red') if $s->conflicts;
+      print "\n";
+      0;
   }, \@ARGV);
 
   0;
