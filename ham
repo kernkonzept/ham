@@ -70,14 +70,14 @@ package Options {
     my ($self) = shift;
     $self->{opt} = {};
     my @pre_args;
-    if (defined $self->{conf}->{'pre_args'}) {
+    if (defined $self->{conf}->{pre_args}) {
       @pre_args = ();
       while (@ARGV and substr($ARGV[0], 0, 1) ne '-') {
         push @pre_args, shift @ARGV;
       }
     }
 
-    if (defined $self->{conf}->{'extra_args'}) {
+    if (defined $self->{conf}->{extra_args}) {
       $self->{opt}->{__EXTRA_ARGS} = [];
       for (my $i = 0; $i < scalar(@ARGV); $i++) {
         if ($ARGV[$i] eq '--') {
@@ -88,7 +88,9 @@ package Options {
       }
     }
 
-    my $res = GetOptions($self->{opt}, map { $_->[0] } @{$self->{options}});
+    my $o = Getopt::Long::Parser->new;
+    $o->configure(@{$self->{conf}->{config}}) if defined $self->{conf}->{config};
+    my $res = $o->getoptions($self->{opt}, map { $_->[0] } @{$self->{options}});
     $self->{opt}->{__PREARGS} = \@pre_args;
     return $res;
   }
@@ -1792,7 +1794,7 @@ $commands->alias('merge-id' => 'download-id -p');
 $commands->add(diff => Subcommand->new(
   syn => [
     '%c %o [<commit>][..|...| ][<commit>] -- [<project>...]',
-    { extra_args => 1 },
+    { extra_args => 1, config => [ 'pass_through' ] },
   ],
   desc => qq|Create a diff including all given projects.\r
              the <commit> parameters are equvalent to the parameters for git diff.
@@ -1824,7 +1826,7 @@ $commands->add(diff => Subcommand->new(
 $commands->add('rev-list' => Subcommand->new(
   syn => [
     '%c %o [<revisions>...] -- [<project>...]',
-    { extra_args => 1 },
+    { extra_args => 1, config => [ 'pass_through' ] },
   ],
   desc => qq|Print a git rev-list for each project.\r
              The rev-list for ech project is printed on a single line
@@ -1832,7 +1834,6 @@ $commands->add('rev-list' => Subcommand->new(
              <project name>: SP <rev> SP ...|,
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
-    my @args = @ARGV;
     foreach_repo(sub {
         my $prj = shift;
         my $git = $prj->git;
@@ -1849,16 +1850,15 @@ $commands->add('rev-list' => Subcommand->new(
   }
 ));
 
-###### rev-list ####################################
+###### log ####################################
 $commands->add('log' => Subcommand->new(
   syn => [
     '%c %o [<revision>...] -- [<project>...]',
-    { extra_args => 1 },
+    { extra_args => 1, config => [ 'pass_through' ] },
   ],
   desc => qq|Print a git log for each project.|,
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
-    my @args = @ARGV;
     foreach_repo(sub {
         my $prj = shift;
         my $git = $prj->git;
