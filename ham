@@ -11,16 +11,20 @@ use IO::Select;
 use Cwd;
 use JSON;
 
-eval { require Term::ANSIColor };
-if (!$@) {
-  import Term::ANSIColor qw(colored);
-} else {
-  sub colored { return $_[0]; }
-}
-
+my $prog = 'ham';
 $ENV{LC_ALL} = 'C';
 
-my $prog = 'ham';
+if (-t STDOUT) {
+  eval { require Term::ANSIColor };
+  if (!$@) {
+    import Term::ANSIColor qw(colored);
+  } else {
+    *colored = sub { return $_[0]; }
+  }
+} else {
+  *colored = sub { return $_[0]; }
+}
+
 
 sub filter_projects
 {
@@ -971,7 +975,7 @@ package Project {
       return $self->[0] =~ /##.*(ahead|behind)/;
     }
 
-    sub is_dirty()      { scalar(@$_[0]) > 1; }
+    sub is_dirty()      { scalar(@{$_[0]}) > 1; }
     sub branch_status() { $_[0]->[0]; }
     sub files()         { @{$_[0]}[1..$#{$_[0]}]; }
     sub conflicts()     { grep { /^(U.|.U)/ } $_[0]->files; }
