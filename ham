@@ -120,9 +120,6 @@ package Options {
   {
     my ($self, $cmd) = @_;
 
-    sub option_desc(@);
-    sub option_spec($$);
-
     my $usage = $self->{usage};
     my $o = join(' ', map { option_spec($_->[0], $_->[2]) } @{$self->{options}});
     $usage =~ s/%o/$o/g;
@@ -136,7 +133,7 @@ package Options {
 
     return ($usage, $options);
 
-    sub pretty_opts($$)
+    sub pretty_opts
     {
       my ($o, $c) = @_;
       my $op = '';
@@ -156,7 +153,7 @@ package Options {
         }
       }
 
-      sub pretty_opt($$$)
+      sub pretty_opt
       {
         my ($opt, $optional, $arg) = @_;
         return "--$opt=$arg" if length($opt) > 1 and defined $arg and not $optional;
@@ -171,7 +168,7 @@ package Options {
       return @opts;
     }
 
-    sub option_desc(@)
+    sub option_desc
     {
       my ($o, $d, $c) = @_;
       return [] unless defined $o;
@@ -180,7 +177,7 @@ package Options {
       return [$txt, $d];
     }
 
-    sub option_spec($$)
+    sub option_spec
     {
       my ($o, $c) = @_;
       my @os = pretty_opts($o, $c);
@@ -386,7 +383,7 @@ my $repo_dir;
 my $repo_base;
 my $repo_subdir = '.ham';
 
-sub get_repo_dir(@)
+sub get_repo_dir
 {
   my $try = shift;
   return $repo_dir if defined $repo_dir;
@@ -409,7 +406,7 @@ sub get_repo_dir(@)
   }
 }
 
-sub repo_base(@)
+sub repo_base
 {
   get_repo_dir(@_);
   return $repo_base;
@@ -424,7 +421,7 @@ my $err  = [];
 ## stream to be processed by a stream processor
 package Stream {
   use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
-  sub new($$$@)
+  sub new
   {
     shift;
     my $fh = shift;
@@ -441,7 +438,7 @@ package Stream {
     return bless $self, 'Stream';
   }
 
-  sub process($)
+  sub process
   {
     my $self = shift;
     my $func = shift;
@@ -478,7 +475,7 @@ package Stream::Process {
   }
 
   ## add new stream to the processor
-  sub add($@)
+  sub add
   {
     my $self = shift;
     foreach my $s (@_) {
@@ -487,28 +484,28 @@ package Stream::Process {
   }
 
   ## delete a stream from the processor
-  sub del($$)
+  sub del
   {
     my ($self, $s) = @_;
     @{$self->{streams}} = grep { $_ != $s } @{$self->{streams}};
   }
 
   ## delete all closed stream from the processor
-  sub gc($)
+  sub gc
   {
     my ($self) = @_;
     @{$self->{streams}} = grep { not $_->{done} } @{$self->{streams}};
   }
 
   ## are there any sreams left ?
-  sub done($)
+  sub done
   {
     my ($self) = @_;
     return not scalar(@{$self->{streams}});
   }
 
   ## do stream processing
-  sub process($)
+  sub process
   {
     my ($self) = @_;
 
@@ -603,21 +600,21 @@ package Process_queue {
 
 
   ## test if the queue is fully loaded (max numbber of runnning processes)
-  sub full($)
+  sub full
   {
     my $self = shift;
     return scalar(@{$self->{running}}) >= $self->{max};
   }
 
   ## queue new work
-  sub queue($$@)
+  sub queue
   {
     my ($self, $command, %opts) = @_;
     push @{$self->{queue}}, $command;
   }
 
   ## run all the queued work
-  sub work($)
+  sub work
   {
     my $self = shift;
     while (scalar(@{$self->{queue}})) {
@@ -642,7 +639,7 @@ package Process_queue {
 
   ## private functions follow ...
   ## private: run the next job
-  sub _run_next($)
+  sub _run_next
   {
     my $self = shift;
     my $next = shift @{$self->{queue}};
@@ -650,7 +647,7 @@ package Process_queue {
 
     my ($cmd, %o) = $next->();
 
-    sub parse_stream($@)
+    sub parse_stream
     {
       my ($what, $proc, $data, $self, $opts) = @_;
       my $r = (grep { $_->{proc} == $proc } @{$self->{running}})[0];
@@ -720,14 +717,14 @@ package Project {
   use File::Spec::Functions qw(catdir splitdir);
 
   ## get the absolute base path to the work tree of this project
-  sub abs_path($)
+  sub abs_path
   {
     my $self = shift;
     my $base = ::repo_base();
     return catdir($base, $self->{path});
   }
 
-  sub repo_dir_rel($$)
+  sub repo_dir_rel
   {
     my ($self, $sub) = @_;
     $sub = $self->{path} unless defined $sub;
@@ -739,10 +736,10 @@ package Project {
   }
 
   ## test if the work tree diretory exists
-  sub exists($) { return -e $_[0]->abs_path; }
+  sub exists { return -e $_[0]->abs_path; }
 
   ## check forthe existence of the '.git' directory
-  sub is_git_repo($) { return -e $_[0]->abs_path.'/.git'; }
+  sub is_git_repo { return -e $_[0]->abs_path.'/.git'; }
 
   ## get the Git::Repository object for this project (incl. a work tree)
   sub git
@@ -791,7 +788,7 @@ package Project {
 
 
   ## initialize the project work tree (.git)
-  sub init($)
+  sub init
   {
     my $self = shift;
     Git::Repository->run( init => $self->abs_path );
@@ -856,7 +853,7 @@ package Project {
   }
 
   ## prepare the git repo after sync, incl. checkout
-  sub prepare($$)
+  sub prepare
   {
     my ($self, $opts) = @_;
     return 0 unless $self->sync_checkout($opts);
@@ -884,7 +881,7 @@ package Project {
   }
 
 
-  sub _fetch_progress($$)
+  sub _fetch_progress
   {
     local $_ = shift;
     my $self = shift;
@@ -898,14 +895,14 @@ package Project {
     return undef;
   }
 
-  sub _collect($$)
+  sub _collect
   {
     local $_ = shift;
     my $self = shift;
     push @{$self->{output}}, $_;
   }
 
-  sub fetch($@)
+  sub fetch
   {
     my $self = shift;
     return (
@@ -916,7 +913,7 @@ package Project {
   }
 
   ## checkout the work tree
-  sub checkout($@)
+  sub checkout
   {
     my $r = shift;
     my @args = @_;
@@ -958,7 +955,7 @@ package Project {
   }
 
   ## sync #############################################
-  sub sync($)
+  sub sync
   {
     my $self = shift;
     my $remote_name = $self->{_remote}->{name};
@@ -981,19 +978,19 @@ package Project {
 
   ###### status #########################################
   package Status {
-    sub is_different()
+    sub is_different
     {
       my $self = shift;
       return $self->[0] =~ /##.*(ahead|behind)/;
     }
 
-    sub is_dirty()      { scalar(@{$_[0]}) > 1; }
-    sub branch_status() { $_[0]->[0]; }
-    sub files()         { @{$_[0]}[1..$#{$_[0]}]; }
-    sub conflicts()     { grep { /^(U.|.U)/ } $_[0]->files; }
-    sub index()         { grep { /^[MARCD]/ } $_[0]->files; }
-    sub changed()       { grep { /^.[MD]/ } $_[0]->files; }
-    sub untracked()     { grep { /^\?\?/ } $_[0]->files; }
+    sub is_dirty      { scalar(@{$_[0]}) > 1; }
+    sub branch_status { $_[0]->[0]; }
+    sub files         { @{$_[0]}[1..$#{$_[0]}]; }
+    sub conflicts     { grep { /^(U.|.U)/ } $_[0]->files; }
+    sub index         { grep { /^[MARCD]/ } $_[0]->files; }
+    sub changed       { grep { /^.[MD]/ } $_[0]->files; }
+    sub untracked     { grep { /^\?\?/ } $_[0]->files; }
   }
 
   sub status
@@ -1005,7 +1002,7 @@ package Project {
     return bless \@s, 'Status';
   }
 
-  sub print_status($)
+  sub print_status
   {
     my $self = shift;
     my $s = $self->status;
@@ -1016,7 +1013,7 @@ package Project {
     return;
   }
 
-  sub check_rev_list($$$$)
+  sub check_rev_list
   {
     my ($prj, $r, $src_br, $rev_list) = @_;
 
@@ -1124,7 +1121,7 @@ package Project {
 
 my @project_attrs = ('revision', 'remote');
 
-sub apply_default($$$)
+sub apply_default
 {
   my ($manifest, $r, $what) = @_;
   $r->{$what} = $manifest->{default}->{$what} unless defined $r->{$what};
@@ -1233,7 +1230,7 @@ $commands->add(list => {
   desc => "list all projects managed by $prog"
 });
 
-sub cmd_list_projects($$)
+sub cmd_list_projects
 {
   foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; return 0; }, \@ARGV);
 }
@@ -1241,7 +1238,7 @@ sub cmd_list_projects($$)
 
 ###### initialize managed directory ####################
 
-sub place_commit_msg_hook()
+sub place_commit_msg_hook
 {
   my $d = get_repo_dir();
   make_path("$d/hooks") unless -d "$d/hooks";
@@ -1264,7 +1261,7 @@ $commands->add(init => {
   desc => "initialize $prog meta project in the curent directory"
 });
 
-sub cmd_init($)
+sub cmd_init
 {
   my $opt = shift;
   my $repo_dat_src = $opt->{file};
@@ -1372,7 +1369,7 @@ $commands->add(forall => {
   desc => 'run <cmd> for all projects'
 });
 
-sub cmd_forall($$$)
+sub cmd_forall
 {
   my ($opt, $cmd, $subs) = @_;
   my $print_prj = $opt->{p};
@@ -1459,7 +1456,7 @@ $commands->add(info => {
   desc => 'show infos for each project'
 });
 
-sub cmd_info($$)
+sub cmd_info
 {
   select pager;
   foreach_repo(sub {
@@ -1502,7 +1499,7 @@ $commands->sub->{remote}->add(
   }
 );
 
-sub cmd_remote_add($$)
+sub cmd_remote_add
 {
   my $name = shift @ARGV;
   $_[2]->print_usage($_[1]) unless defined $name;
@@ -1553,7 +1550,7 @@ $commands->add(upload => {
   desc => 'upload changes for review'
 });
 
-sub cmd_upload($$$)
+sub cmd_upload
 {
   my $opts = shift;
   $opts->{br} = 'HEAD' unless defined $opts->{br};
