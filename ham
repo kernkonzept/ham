@@ -1004,7 +1004,7 @@ sub cmd_upload
   my $opts = shift;
   $opts->{br} = 'HEAD' unless defined $opts->{br};
 
-  my $projects = sorted_and_filtered_projects(@ARGV);
+  my $projects = sorted_and_filtered_projects(\@ARGV);
 
   my @warn;
   my @good_projects;
