@@ -1159,18 +1159,14 @@ sub load_projects
 
 ##########################################################################
 
-sub foreach_repo_r($$@)
+sub foreach_prj_r
 {
-  my ($func, $projects, $progress, @args) = @_;
-  my $cnt = 1;
-  my $total = scalar(@$projects);
+  my ($func, $projects) = @_;
   foreach my $r (@$projects) {
-    print STDERR "\r\e[K($cnt/$total) " if $progress;
-    my $res = $func->($r, @args);
+    local $_ = $r;
+    my $res = $func->($r);
     return $res if $res;
-    $cnt++;
   }
-  print STDERR "\n" if $progress and $total;
   0;
 }
 
@@ -1207,33 +1203,28 @@ sub print_errors
 
 sub sorted_and_filtered_projects
 {
-  my $prjs = shift;
+  my ($prjs) = @_;
   $prjs = \@ARGV unless defined $prjs;
   my $projects = filter_projects(load_projects(), $prjs);
   return [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 }
 
-sub foreach_repo(&@)
+sub foreach_prj(&@)
 {
-  my ($func, $prjs, $progress, @args) = @_;
+  my ($func, $prjs) = @_;
   $prjs = \@ARGV unless defined $prjs;
 
-  my $res = foreach_repo_r($func, sorted_and_filtered_projects($prjs), $progress, @args);
+  my $res = foreach_prj_r($func, sorted_and_filtered_projects($prjs));
   print_errors();
   return $res;
 }
 
 ####### list projects #################################
 $commands->add(list => {
-  cmd  => \&cmd_list_projects, 
+  cmd  => sub { foreach_prj { print "$_->{name} $_->{path}\n"; 0; }; },
   syn  => '%c',
   desc => "list all projects managed by $prog"
 });
-
-sub cmd_list_projects
-{
-  foreach_repo(sub { print "$_[0]->{name} $_[0]->{path}\n"; return 0; }, \@ARGV);
-}
 
 
 ###### initialize managed directory ####################
@@ -1332,7 +1323,7 @@ sub cmd_sync
   }
   place_commit_msg_hook();
 
-  my $projects = sorted_and_filtered_projects(\@ARGV);
+  my $projects = sorted_and_filtered_projects(@ARGV);
   my $q = Process_queue->new();
 
   foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
@@ -1350,7 +1341,7 @@ sub cmd_sync
 
 ###### status #########################################
 $commands->add(status => {
-  cmd  => sub { select pager; foreach_repo(sub { shift->print_status; 0;}) },
+  cmd  => sub { select pager; foreach_prj { $_->print_status; 0;} },
   syn  => '%c [<project>...]',
   desc => 'show the status of all projects'
 });
@@ -1380,19 +1371,19 @@ sub cmd_forall
 
   my $cwd = getcwd;
 
-  my $res = foreach_repo(sub {
-      my $r = shift;
-      print "$r->{name}: $r->{path}\n" if $print_prj;
-      chdir $r->abs_path;
-      my @argv = @ARGV;
-      if ($opt->{vars}) {
-        my $upstream = "refs/remotes/$r->{_remote}->{name}/$r->{revision}";
-        s,\{UPSTREAM\},$upstream,g foreach @argv;
-      }
-      my $res = system(@argv);
-      return ($res) if $res and $opt->{'abort-on-errors'};
-      return 0;
-    }, $opt->{__PREARGS});
+  my $res = foreach_prj {
+    my $r = $_;
+    print colored("$r->{name}: $r->{path}\n", 'bold') if $print_prj;
+    chdir $r->abs_path;
+    my @argv = @ARGV;
+    if ($opt->{vars}) {
+      my $upstream = "refs/remotes/$r->{_remote}->{name}/$r->{revision}";
+      s,\{UPSTREAM\},$upstream,g foreach @argv;
+    }
+    my $res = system(@argv);
+    return ($res) if $res and $opt->{'abort-on-errors'};
+    return 0;
+  } $opt->{__PREARGS};
 
   chdir $cwd;
   return $res;
@@ -1417,11 +1408,11 @@ sub cmd_checkout
   my $branch = shift @ARGV;
   $cmd->print_usage($command) unless defined $branch;
   my $abt = $opts->{'abort-on-errors'};
-  return foreach_repo(sub {
-      my $r = shift->checkout($branch);
-      return $r if $r and $abt;
-      return 0;
-    });
+  return foreach_prj {
+    my $r = $_->checkout($branch);
+    return $r if $r and $abt;
+    return 0;
+  };
 }
 
 
@@ -1445,7 +1436,7 @@ sub cmd_start
   my @args = ('--track', '-b', $branch);
   push @args, $base if defined $base and $base ne '';
 
-  return foreach_repo(sub { shift->checkout(@args) });
+  return foreach_prj { $_->checkout(@args) };
 }
 
 
@@ -1459,23 +1450,23 @@ $commands->add(info => {
 sub cmd_info
 {
   select pager;
-  foreach_repo(sub {
-      my $p = shift;
-      my $g = $p->git;
-      my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
-      print colored("$p->{name}: in $p->{path}\n", 'bold');
-      print "  remote: $p->{remote} @ branch ".colored($p->{revision}, 'yellow')."\n";
-      print "  local revision: ".colored($head, 'yellow')."\n";
-      my $s = $p->status;
-      my $dirty = $s->is_dirty;
-      print "  status: ".$s->branch_status."\n" if $s->is_different;
-      print colored("          contains untracked files\n", 'red') if $s->untracked;
-      print colored("          contains uncommited changes in the index\n", 'green') if $s->index;
-      print colored("          contains modifications in the working copy\n", 'red') if $s->changed;
-      print colored("          has merge conflicts\n", 'bold', 'red') if $s->conflicts;
-      print "\n";
-      0;
-  }, \@ARGV);
+  foreach_prj {
+    my $p = $_;
+    my $g = $p->git;
+    my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
+    print colored("$p->{name}: in $p->{path}\n", 'bold');
+    print "  remote: $p->{remote} @ branch ".colored($p->{revision}, 'yellow')."\n";
+    print "  local revision: ".colored($head, 'yellow')."\n";
+    my $s = $p->status;
+    my $dirty = $s->is_dirty;
+    print "  status: ".$s->branch_status."\n" if $s->is_different;
+    print colored("          contains untracked files\n", 'red') if $s->untracked;
+    print colored("          contains uncommited changes in the index\n", 'green') if $s->index;
+    print colored("          contains modifications in the working copy\n", 'red') if $s->changed;
+    print colored("          has merge conflicts\n", 'bold', 'red') if $s->conflicts;
+    print "\n";
+    0;
+  };
 
   0;
 }
@@ -1507,12 +1498,12 @@ sub cmd_remote_add
   $_[2]->print_usage($_[1]) unless defined $url;
   $url .= '/' unless substr($url, -1, 1) eq '/';
   $url = URI->new($url);
-  foreach_repo(sub {
-    my $r = shift;
+  foreach_prj {
+    my $r = $_;
     my $rurl = URI->new_abs($r->{name}, $url);
     #print $url, " => ", $rurl, "\n";
     $r->git->run(remote => 'add', $name, $rurl->as_string);
-  });
+  };
   return 0;
 }
 
@@ -1555,7 +1546,7 @@ sub cmd_upload
   my $opts = shift;
   $opts->{br} = 'HEAD' unless defined $opts->{br};
 
-  my $projects = sorted_and_filtered_projects(\@ARGV);
+  my $projects = sorted_and_filtered_projects(@ARGV);
 
   my @warn;
   my @good_projects;
@@ -1863,8 +1854,8 @@ $commands->add(diff => {
     my ($opts, $command, $cmd) = @_;
     my @args = @ARGV;
     select pager;
-    foreach_repo(sub {
-        my $prj = shift;
+    foreach_prj {
+        my $prj = $_;
         my $git = $prj->git;
         #print "$prj->{name}\n";
 
@@ -1877,7 +1868,7 @@ $commands->add(diff => {
                   '--dst-prefix='.File::Spec->catdir('b', $prj->{path}).'/',
                   @a, '--', sub { print "$_\n";} );
         return 0;
-    }, $opts->{__EXTRA_ARGS});
+    } $opts->{__EXTRA_ARGS};
   }
 });
 
@@ -1893,19 +1884,19 @@ $commands->add('rev-list' => {
              <project name>: SP <rev> SP ...|,
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
-    foreach_repo(sub {
-        my $prj = shift;
-        my $git = $prj->git;
-        #print "$prj->{name}\n";
+    foreach_prj {
+      my $prj = $_;
+      my $git = $prj->git;
+      #print "$prj->{name}\n";
 
-        my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
-        my @a = @ARGV;
-        s,\{UPSTREAM\},$upstream,g foreach @a;
+      my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
+      my @a = @ARGV;
+      s,\{UPSTREAM\},$upstream,g foreach @a;
 
-        my @revs = $git->run('rev-list', @a, '--');
-        print "$prj->{name}: ".join(' ', @revs)."\n" if @revs;
-        return 0;
-    }, $opts->{__EXTRA_ARGS});
+      my @revs = $git->run('rev-list', @a, '--');
+      print "$prj->{name}: ".join(' ', @revs)."\n" if @revs;
+      return 0;
+    } $opts->{__EXTRA_ARGS};
   }
 });
 
@@ -1919,27 +1910,27 @@ $commands->add('log' => {
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
     select pager;
-    foreach_repo(sub {
-        my $prj = shift;
-        my $git = $prj->git;
+    foreach_prj {
+      my $prj = $_;
+      my $git = $prj->git;
 
-        my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
-        my @a = @ARGV;
-        s,\{UPSTREAM\},$upstream,g foreach @a;
+      my $upstream = "refs/remotes/$prj->{_remote}->{name}/$prj->{revision}";
+      my @a = @ARGV;
+      s,\{UPSTREAM\},$upstream,g foreach @a;
 
-        my $first = 1;
-        my @revs = $git->run('log', '--color=always', @a, '--', sub {
-            if ($first) {
-              $first = 0;
-              print "$prj->{name}: $prj->{path}\n";
-            }
-            print "  $_\n";
-          });
+      my $first = 1;
+      my @revs = $git->run('log', '--color=always', @a, '--', sub {
+          if ($first) {
+            $first = 0;
+            print "$prj->{name}: $prj->{path}\n";
+          }
+          print "  $_\n";
+        });
 
-        print "\n" unless $first;
+      print "\n" unless $first;
 
-        return 0;
-    }, $opts->{__EXTRA_ARGS});
+      return 0;
+    } $opts->{__EXTRA_ARGS};
   }
 });
 
