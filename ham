@@ -1742,7 +1742,7 @@ $commands->add('download-id' => {
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
     my $change_id = shift @ARGV;
-    $cmd->usage_error($command, "error: missinng change id") unless defined $change_id;
+    $cmd->usage_error($command, "error: missing change id") unless defined $change_id;
     my $prjs = filter_projects(load_projects());
     my %queries = ();
     foreach my $p (values %$prjs) {
