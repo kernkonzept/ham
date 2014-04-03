@@ -1520,14 +1520,14 @@ sub approve_dependent_changes
 {
   my ($prj, $commits) = @_;
   print STDERR "project $prj->{name} ($prj->{path}) has more than one change,\n".
-               "this will produce the following depnendent changes:\n\n";
+               "this will produce the following dependent changes:\n\n";
   my @log = $prj->bare_git->run('log', '--color=always', '--oneline', "$$commits[$#$commits]~1..$$commits[0]");
 
   print STDERR "$_\n" foreach (@log);
   print STDERR "\ndo you want to upload these changes at once? [y/N]: ";
   my $answer = <STDIN>;
-  return 1 if $answer eq 'y' or $answer eq 'Y' or $answer eq 'yes';
-  return 0;
+  chomp $answer;
+  return $answer eq 'y' or $answer eq 'Y' or $answer eq 'yes';
 }
 
 ###### upload ####################################################
