@@ -192,6 +192,8 @@ package Options {
 }
 
 package Subcommand {
+  use Carp;
+
   sub new
   {
     shift;
@@ -206,7 +208,9 @@ package Subcommand {
   sub add
   {
     my ($self, $name, $subcmd) = @_;
-    $self->{sub}->{$name} = $subcmd;
+    return $self->{sub}{$name} = $subcmd if ref $subcmd eq 'Subcommand';
+    return $self->{sub}{$name} = Subcommand->new(%$subcmd) if ref $subcmd eq 'HASH';
+    croak "Subcommand::add needs a hash reference or a Subcommand as second parameter";
   }
 
   sub alias
@@ -360,7 +364,7 @@ my $commands = Subcommand->new(
   desc => 'print help'
 );
 
-$commands->add(help => Subcommand->new(
+$commands->add(help => {
   cmd => sub {
     if (@ARGV) {
       my ($ok, $cmd, $command, $sub) = $commands->find($prog);
@@ -375,7 +379,7 @@ $commands->add(help => Subcommand->new(
   },
   syn => '%c',
   desc => 'print help'
-));
+});
 
 
 my $repo_dir;
@@ -1071,7 +1075,7 @@ package Project {
     return 1;
   }
 
-  sub check_for_upload()
+  sub check_for_upload
   {
     my ($prj, $warn, $src_br, $dst_br, $approve_cb) = @_;
     my $r = $prj->git($err);
@@ -1212,7 +1216,7 @@ sub sorted_and_filtered_projects
   return [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 }
 
-sub foreach_repo($@)
+sub foreach_repo(&@)
 {
   my ($func, $prjs, $progress, @args) = @_;
   $prjs = \@ARGV unless defined $prjs;
@@ -1223,11 +1227,11 @@ sub foreach_repo($@)
 }
 
 ####### list projects #################################
-$commands->add(list => Subcommand->new(
+$commands->add(list => {
   cmd  => \&cmd_list_projects, 
   syn  => '%c',
   desc => "list all projects managed by $prog"
-));
+});
 
 sub cmd_list_projects($$)
 {
@@ -1250,7 +1254,7 @@ sub place_commit_msg_hook()
 }
 
 ###### init #############################################
-$commands->add(init => Subcommand->new(
+$commands->add(init => {
   cmd => \&cmd_init,
   syn => [
     '%c %o',
@@ -1258,7 +1262,7 @@ $commands->add(init => Subcommand->new(
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
   ],
   desc => "initialize $prog meta project in the curent directory"
-));
+});
 
 sub cmd_init($)
 {
@@ -1309,7 +1313,7 @@ sub cmd_init($)
 
 
 ###### sync ###########################################
-$commands->add(sync => Subcommand->new(
+$commands->add(sync => {
   cmd  => \&cmd_sync,
   syn  => [
     '%c [<project>...]',
@@ -1319,7 +1323,7 @@ $commands->add(sync => Subcommand->new(
                     the manifest| ],
   ],
   desc => 'checkout/update all projects'
-));
+});
 
 sub cmd_sync
 {
@@ -1348,15 +1352,15 @@ sub cmd_sync
 
 
 ###### status #########################################
-$commands->add(status => Subcommand->new(
+$commands->add(status => {
   cmd  => sub { select pager; foreach_repo(sub { shift->print_status; 0;}) },
   syn  => '%c [<project>...]',
   desc => 'show the status of all projects'
-));
+});
 
 
 ###### forall #######################################
-$commands->add(forall => Subcommand->new(
+$commands->add(forall => {
   cmd => \&cmd_forall,
   syn => [
     '%c [<project>...] %o -- <cmd> [<arg>...]',
@@ -1366,7 +1370,7 @@ $commands->add(forall => Subcommand->new(
     [ 'vars|i',           qq|prelace special '{...}' tokens within the arguments| ],
   ],
   desc => 'run <cmd> for all projects'
-));
+});
 
 sub cmd_forall($$$)
 {
@@ -1399,14 +1403,14 @@ sub cmd_forall($$$)
 
 
 ####### checkout ################################
-$commands->add(checkout => Subcommand->new(
+$commands->add(checkout => {
   cmd  => \&cmd_checkout,
   syn  => [
     '%c <branch> [<project>...]',
     [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be interated' ]
   ],
   desc => 'checkout <branch> in all projects'
-));
+});
 
 $commands->alias(co => 'checkout');
 
@@ -1425,14 +1429,14 @@ sub cmd_checkout
 
 
 ###### start a new topic branch ##################
-$commands->add(start => Subcommand->new(
+$commands->add(start => {
   cmd => \&cmd_start,
   syn => [
     '%c %o <branch name> [<projects>...]',
     [ 'base|t=s', 'starting point for the new branch', { arg => '<start-point>' } ],
   ],
   desc => 'start a new topic branch <branch> in all projects'
-));
+});
 
 sub cmd_start
 {
@@ -1449,11 +1453,11 @@ sub cmd_start
 
 
 ###### info ####################################
-$commands->add(info => Subcommand->new(
+$commands->add(info => {
   cmd  => \&cmd_info,
   syn  => '%c [<project>...]',
   desc => 'show infos for each project'
-));
+});
 
 sub cmd_info($$)
 {
@@ -1482,20 +1486,20 @@ sub cmd_info($$)
 
 ###### remote #######################################
 $commands->add(
-  remote => Subcommand->new(
+  remote => {
     cmd => sub { $_[2]->print_usage($_[1]); 0; },
     syn => '%c',
     desc => 'manage remotes for all projects'
-  )
+  }
 );
 
 ###### remote add ####################################
 $commands->sub->{remote}->add(
-  add => Subcommand->new(
+  add => {
     cmd  => \&cmd_remote_add,
     syn  => '%c <remote-name> <url> [<project>...]',
     desc => 'add a repository remote for to each git repo using <url> as prefix'
-  )
+  }
 );
 
 sub cmd_remote_add($$)
@@ -1531,7 +1535,7 @@ sub approve_dependent_changes
 }
 
 ###### upload ####################################################
-$commands->add(upload => Subcommand->new(
+$commands->add(upload => {
   cmd => \&cmd_upload,
   syn => [
     '%c %o [<project>...]',
@@ -1547,7 +1551,7 @@ $commands->add(upload => Subcommand->new(
     [ 'dry-run|n',       'Do a dry run, just print the git commands that would be issued' ],
   ],
   desc => 'upload changes for review'
-));
+});
 
 sub cmd_upload($$$)
 {
@@ -1697,7 +1701,7 @@ sub fetch_and_co_changes
 
 
 ###### download ####################################
-$commands->add(download => Subcommand->new(
+$commands->add(download => {
   syn => [
     '%c %o <project> <change-nr>[/<patchset>]',
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
@@ -1728,14 +1732,14 @@ $commands->add(download => Subcommand->new(
       { $prjn => { change => $change, patchset => $patchset }}
     );
   }
-));
+});
 
 $commands->alias('cherry-pick' => 'download -c');
 $commands->alias('merge' => 'download -p');
 
 
 ###### download-id ####################################
-$commands->add('download-id' => Subcommand->new(
+$commands->add('download-id' => {
   syn => [
     '%c %o <change-id> [<project>...]',
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
@@ -1841,14 +1845,14 @@ $commands->add('download-id' => Subcommand->new(
 
     return fetch_and_co_changes($opts, $prjs, \%get_change);
   }
-));
+});
 
 $commands->alias('cherry-pick-id' => 'download-id -c');
 $commands->alias('merge-id' => 'download-id -p');
 
 
 ###### diff ####################################
-$commands->add(diff => Subcommand->new(
+$commands->add(diff => {
   syn => [
     '%c %o [<commit>][..|...| ][<commit>] -- [<project>...]',
     { extra_args => 1, config => [ 'pass_through' ] },
@@ -1878,10 +1882,10 @@ $commands->add(diff => Subcommand->new(
         return 0;
     }, $opts->{__EXTRA_ARGS});
   }
-));
+});
 
 ###### rev-list ####################################
-$commands->add('rev-list' => Subcommand->new(
+$commands->add('rev-list' => {
   syn => [
     '%c %o [<revisions>...] -- [<project>...]',
     { extra_args => 1, config => [ 'pass_through' ] },
@@ -1906,10 +1910,10 @@ $commands->add('rev-list' => Subcommand->new(
         return 0;
     }, $opts->{__EXTRA_ARGS});
   }
-));
+});
 
 ###### log ####################################
-$commands->add('log' => Subcommand->new(
+$commands->add('log' => {
   syn => [
     '%c %o [<revision>...] -- [<project>...]',
     { extra_args => 1, config => [ 'pass_through' ] },
@@ -1940,7 +1944,7 @@ $commands->add('log' => Subcommand->new(
         return 0;
     }, $opts->{__EXTRA_ARGS});
   }
-));
+});
 
 
 
