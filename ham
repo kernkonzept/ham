@@ -52,8 +52,24 @@ sub filter_projects
 
   if (defined $argv->[0]) {
     my %r = ();
-    foreach my $n (@$argv) {
-      $r{$n} = $projects->{$n} if exists $projects->{$n};
+    my $inverse = 0;
+    my @args = @$argv;
+
+    if ($args[0] eq '!') {
+      shift @args;
+      $inverse = 1;
+      %r = %{$projects};
+    }
+
+    foreach my $n (@args) {
+      if (exists $projects->{$n}) {
+        if (not $inverse) {
+          $r{$n} = $projects->{$n};
+        } else {
+          delete $r{$n};
+        }
+        next;
+      }
 
       # handle '.' magic, find out project is the best hitfor
       # the current working directory
@@ -69,7 +85,13 @@ sub filter_projects
           }
         }
 
-        $r{$hit->{name}} = $hit if defined $hit;
+        if (defined $hit) {
+          if (not $inverse) {
+            $r{$hit->{name}} = $hit;
+          } else {
+            delete $r{$hit->{name}};
+          }
+        }
       }
     }
     return \%r;
