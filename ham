@@ -783,7 +783,7 @@ sub cmd_sync
   }
   place_commit_msg_hook();
 
-  my $projects = sorted_and_filtered_projects(@ARGV);
+  my $projects = sorted_and_filtered_projects(\@ARGV);
   my $q = Hammer::Process_queue->new();
 
   foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
