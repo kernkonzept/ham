@@ -888,9 +888,58 @@ sub cmd_sync
 
 ###### status #########################################
 $commands->add(status => {
-  cmd  => sub { select pager; foreach_prj { $_->print_status; 0;} },
-  syn  => '%c [<project>...]',
-  desc => 'show the status of all projects'
+  syn  => [
+    '%c %o [<project>...]',
+    [ 'short|s',     'generate output in git short mode' ],
+    [ 'branch|b',    'show branch information event in short mode' ],
+    [ 'porcelain', q|generate output in short mode and with
+                     branch infos and without any colors|]
+  ],
+  desc => 'show the status of all projects',
+  cmd  => sub {
+    my ($opts, $command, $cmd) = @_;
+
+    if ($opts->{porcelain}) {
+      foreach_prj { $_->print_status; 0;}
+      return 0;
+    }
+
+    select pager;
+    my $branch_info = 1;
+    my $short = $opts->{short};
+    $branch_info = $opts->{branch} if $short;
+
+    foreach_prj {
+      my $p = $_;
+      my $s = $p->status;
+      return 0 unless $branch_info and $s->is_different or $s->is_dirty;
+      print colored("project: $p->{name}: ".$p->abs_path, 'bold'), "\n";
+      if ($branch_info) {
+        print "    $s->[0]\n";
+      }
+      if ($short) {
+        print "    $_\n" foreach $s->files;
+      } else {
+        sub show
+        {
+          my ($msg, @i) = @_;
+          if (@i) {
+            print "\n$msg:\n";
+            print "\t".colored($_, 'red')."\n" foreach @i;
+          }
+        }
+
+        show("Files with merge conflicts", $s->pretty_conflicts($p->{path}));
+        show("Changes staged for commit", $s->pretty_index($p->{path}));
+        show("Changes not staged for commit", $s->pretty_changed($p->{path}));
+        show("Untracked files", $s->pretty_untracked($p->{path}));
+        print "\n";
+      }
+      return 0;
+    };
+
+    return 0;
+  }
 });
 
 
