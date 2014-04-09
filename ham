@@ -1481,6 +1481,223 @@ $commands->add('log' => {
   }
 });
 
+###### commit ####################################
+sub get_160bit_rnd
+{
+  my $rnd;
+  open my $rnd_file, "</dev/urandom";
+  read $rnd_file, $rnd, 20;
+  close $rnd_file;
+  return (unpack('H*', $rnd))[0];
+}
+
+sub split_message
+{
+  my @msg = @_;
+
+  my $attachment;
+  my $footer;
+
+  my $footer_comment = 0;
+  my $blank_lines = 0;
+  my $p = \@msg;
+
+  local $_;
+
+  for (my $l = 0; $l < scalar(@msg); $l++) {
+    local $_ = $msg[$l];
+    #put comments into the current part
+    if (/^#/) {
+      $l -= $blank_lines - 1;
+      splice(@msg, $l, $blank_lines - 1) if $blank_lines > 1;
+      $blank_lines = 0;
+      $footer = $l if not $footer;
+      $footer_comment = 0;
+      next;
+    }
+
+    # put all text starting from a diff line into the last part of the message
+    if (m|^diff --git a/|) {
+      if ($blank_lines) {
+        $l -= $blank_lines - 1;
+        splice(@msg, $l, $blank_lines - 1) if $blank_lines > 1;
+        $blank_lines = 0;
+      }
+      $attachment = $l;
+      last;
+    }
+
+    if (/^$/ and not $footer_comment) {
+      $blank_lines++;
+      next;
+    }
+
+    $footer_comment = 1 if /^\[[a-zA-Z0-9-]+:/ and defined $footer;
+    $footer_comment = 2 if /]$/ and $footer_comment == 1;
+
+    if ($blank_lines) {
+      $l -= $blank_lines - 1;
+      splice(@msg, $l, $blank_lines - 1) if $blank_lines > 1;
+      $blank_lines = 0;
+      $footer = $l if not $footer;
+      $footer_comment = 0;
+    }
+
+    if (not $footer_comment and (!/^\[?[a-zA-Z0-9-]+:/ or m|^[a-zA-Z0-9-]+://|)) {
+      $footer = undef;
+    }
+  }
+
+  splice(@msg, -$blank_lines) if $blank_lines;
+
+  $attachment = $#msg + 1 unless defined $attachment;
+  $footer = $attachment unless defined $footer;
+
+  return (
+    [ @msg[0..$footer-1] ],
+    [ @msg[$footer..$attachment-1] ],
+    [ @msg[$attachment..$#msg] ]
+  );
+}
+
+sub add_change_id
+{
+  return @_ if grep(/^Change-Id:/, @_);
+  my ($m, $f, $a) = split_message(@_);
+
+  return (@$m, '', "Change-Id: I".get_160bit_rnd(), '', @$f, @$a);
+}
+
+
+$commands->add('commit' => {
+  syn => [
+    '%c %o [<project>...]',
+    [ 'message|msg|m=s',    'The commit message', { arg => '<msg>' } ],
+    [ 'file|F=s',           'File containing the commit message', { arg => '<msg-file>' } ]
+  ],
+  desc => qq|Create a single commit across multiple projects. The commit
+             will get the same commit message and mor importent the same
+             change ID.|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+
+    my @index;
+    my @changes;
+    my @untracked;
+    my @conflicts;
+    my @commit_prj;
+
+    foreach_prj {
+      my $prj = $_;
+      my $s = $prj->status;
+      return 0 if not $s->is_dirty;
+      my @i = $s->pretty_index($prj->{path});
+      push @index, @i;
+      push @commit_prj, $prj if @i;
+      push @changes, $s->pretty_changed($prj->{path});
+      push @untracked, $s->pretty_untracked($prj->{path});
+      push @conflicts, $s->pretty_conflicts($prj->{path});
+      return 0;
+    } \@ARGV;
+
+    if (not @commit_prj) {
+      if (@changes) {
+        print "\nChanges not staged for commit:\n";
+        print "\t".colored($_, 'red')."\n" foreach @changes;
+      }
+
+      if (@untracked) {
+        print "\nUntracked files:\n";
+        print "\t".colored($_, 'red')."\n" foreach @untracked;
+      }
+      print "\nno changes to commit\n";
+      return 0;
+    }
+
+    if (@conflicts) {
+      print "\nFiles with merge conflicts:\n";
+      print "\t".colored($_, 'red')."\n" foreach @conflicts;
+      return 100;
+    }
+
+    my @msg;
+    my $edit = 1;
+    if (defined $opts->{message}) {
+      my $m = $opts->{message};
+      $m =~ s,\\n,\n,g;
+      $m =~ s,\\t,\t,g;
+      @msg = split /^/, $m;
+      chomp @msg;
+      $edit = 0;
+    } elsif (defined $opts->{file}) {
+      open my $f, "<$opts->{file}" or die "fatal: cannot open message file $opts->{file}: $!";
+      @msg = <$f>;
+      close $f;
+      chomp @msg;
+      $edit = 0;
+    } else {
+      push @msg, '';
+      push @msg, q|# Please enter the commit message for your changes. Lines starting'|,
+                 q|# with '#' will be ignored, and an empty message aborts the commit.|;
+
+      push @msg, '#', '# Projects with commits:';
+      push @msg, map { "#\t$_->{name}:   $_->{path}" } @commit_prj;
+
+
+      if (@index) {
+        push @msg, '#', "# Changes to be commited:";
+        push @msg, map { "#\t$_" } @index;
+      }
+
+      if (@changes) {
+        push @msg, '#', "# Changes not staged for commit:";
+        push @msg, map { "#\t$_" } @changes;
+      }
+
+      if (@untracked) {
+        push @msg, '#', "# Untracked files:";
+        push @msg, (map { "#\t$_" } @untracked);
+      }
+      push @msg, '#';
+    }
+
+    my $file = File::Spec->catdir(get_repo_dir(), 'COMMIT_EDITMSG');
+    my @m = add_change_id(@msg);
+    open my $commit_msg, "+>$file" or die "fatal: cannot open message file $file: $!";
+    print $commit_msg "$_\n" foreach @m;
+    close $commit_msg;
+
+    if ($edit) {
+      my $ed = $ENV{EDITOR};
+      if (not $ed or $ed eq '') {
+        print STDERR "fatal: no editor for commit message: please set EDITOR= in your environemt";
+        return 128;
+      }
+      system("$ed $file");
+    }
+
+    my $empty = 1;
+    open $commit_msg, "<$file" or die "fatal: cannot open message file $file: $!";
+    while (<$commit_msg>) {
+      next if /^#/;
+      next if /^\s*$/;
+      next if /^Change-Id:/;
+      $empty = 0;
+      last;
+    }
+    close $commit_msg;
+
+    if ($empty) {
+      print STDERR "Aborting commit due to empty commit message.\n";
+      return 100;
+    }
+
+    foreach my $p (@commit_prj) {
+      print "commting in: $p->{path}\n";
+      print $p->git->run(commit => '-F', $file), "\n";
+    }
+  }
+});
 
 
 
