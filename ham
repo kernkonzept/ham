@@ -98,6 +98,26 @@ sub filter_projects
   return $projects;
 }
 
+sub project_for_path
+{
+  my ($projects, $path) = @_;
+  my $rb = realpath(repo_base());
+  my $current_prj;
+  my @prj_rel;
+  foreach my $p (values %$projects) {
+    my $prj_base = realpath(File::Spec->catdir($rb, $p->{path}));
+    my $rel = File::Spec->abs2rel(realpath($path), $prj_base);
+    my @rel = File::Spec->splitdir($rel);
+    next unless @rel;
+    next if $rel[0] eq '..'; # different project
+    if (not $current_prj or scalar(@rel) < scalar(@prj_rel)) {
+      $current_prj = $p;
+      @prj_rel = @rel;
+    }
+  }
+  return ($current_prj, File::Spec->catdir(@prj_rel));
+}
+
 
 ###### the main command (no command given) ############################
 my $commands = Hammer::Subcommand->new(
@@ -1748,6 +1768,43 @@ $commands->add('commit' => {
   }
 });
 
+###### add ####################################
+$commands->add('add' => {
+  syn => [
+    '%c %o [<project>...]',
+  ],
+  desc => qq|Add files to the git index of individual projects.|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+    my @files = @ARGV;
+    my $all_projects = load_projects();
+    my %projects;
+    foreach my $file (@files) {
+      my ($p, $path) = project_for_path($all_projects, $file);
+      if (not $p) {
+        push @$err, "no matching project found for file: $file";
+        next;
+      }
+
+      if (not -e $file) {
+        push @$err, "file $file does not exist";
+        next;
+      }
+
+      $projects{$p->{name}} = [] unless $projects{$p->{name}};
+      push @{$projects{$p->{name}}}, $path;
+    }
+
+    print_errors(exit => 128);
+    while (my ($n, $files) = each %projects) {
+      my $p = $all_projects->{$n};
+      die "fatal: internal error: project $n not in our list" unless defined $p;
+      $p->git->run('add', '--', @$files);
+    }
+
+    return 0;
+  }
+});
 
 
 ## the main program #####################################
