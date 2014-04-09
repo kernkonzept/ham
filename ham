@@ -23,7 +23,6 @@ use Cwd;
 use JSON;
 
 my $prog = 'ham';
-$ENV{LC_ALL} = 'C';
 
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
@@ -238,7 +237,8 @@ package Project {
 
     my $r = $self->{_bare_repo} = $self->{_repo}
           = Git::Repository->new(git_dir => $self->abs_path.'/.git',
-                                 work_tree => $self->abs_path);
+                                 work_tree => $self->abs_path,
+                                 { env => { LC_ALL => 'C' } });
     if (not defined $r and defined $err) {
       push @$err, "$self->{path} is not a valid git repository";
       return undef;
@@ -259,7 +259,8 @@ package Project {
       return undef;
     }
 
-    my $r = $self->{_bare_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git');
+    my $r = $self->{_bare_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git',
+                                                       { env => { LC_ALL => 'C' } });
      if (not defined $r and defined $err) {
       push @$err, "$self->{path} is not a valid git repository";
       return undef;
@@ -273,8 +274,9 @@ package Project {
   sub init
   {
     my $self = shift;
-    Git::Repository->run( init => $self->abs_path );
-    $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path);
+    Git::Repository->run( init => $self->abs_path, { env => { LC_ALL => 'C' } } );
+    $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path,
+                                                                { env => { LC_ALL => 'C' } });
   }
 
   ## do a conditional checkout for sync
@@ -759,7 +761,8 @@ sub cmd_init
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
     mkdir($repo_subdir);
-    Git::Repository->run(clone => $opt->{url}, "$repo_subdir/manifests");
+    Git::Repository->run(clone => $opt->{url}, "$repo_subdir/manifests",
+                         { env => { LC_ALL => 'C' } });
     symlink("manifests/$repo_dat_src", "$repo_subdir/manifest.xml");
     open my $u, ">$repo_subdir/manifests_url";
     print $u "$opt->{url}\n";
@@ -800,7 +803,8 @@ sub cmd_sync
   my ($opts, $command, $cmd) = @_;
   # update manifest repo, if there is any
   if (-d get_repo_dir().'/manifests/.git') {
-    my $r = Git::Repository->new(work_tree => get_repo_dir().'/manifests');
+    my $r = Git::Repository->new(work_tree => get_repo_dir().'/manifests',
+                                 { env => { LC_ALL => 'C' } });
     $r->run(pull => 'origin');
   }
   place_commit_msg_hook();
