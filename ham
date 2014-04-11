@@ -749,7 +749,7 @@ sub fetch_and_co_changes
     my $change = $c->{change};
     my $patchset = $c->{patchset};
 
-    $q->queue(sub { $prj->fetch($remote_name, "refs/changes/".($change % 100)."/".$change."/".$patchset); });
+    $q->queue(sub { $prj->fetch($remote_name, sprintf("refs/changes/%02d/%d/%d", ($change % 100), $change, $patchset)); });
   }
 
   $q->work;
