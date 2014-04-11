@@ -27,7 +27,7 @@ sub new
 sub full
 {
   my $self = shift;
-  return scalar(@{$self->{running}}) >= $self->{max};
+  return scalar(@{$self->{running}}) > $self->{max};
 }
 
 ## queue new work
