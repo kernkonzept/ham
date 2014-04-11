@@ -742,7 +742,7 @@ sub fetch_and_co_changes
 {
   my ($opts, $prjs, $changes) =  @_;
 
-  my $q = Process_queue->new();
+  my $q = Hammer::Process_queue->new();
   foreach my $prj (values %$prjs) {
     my $remote_name = $prj->{_remote}->{name};
     my $c = $changes->{$prj->{name}};
