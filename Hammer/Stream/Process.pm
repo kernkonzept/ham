@@ -48,7 +48,7 @@ sub process
   return undef if $self->done;
 
   while (my @handles = map { $_->{fh} } @{$self->{streams}}) {
-    my @ready = IO::Select->new(@handles)->can_read);
+    my @ready = IO::Select->new(@handles)->can_read;
     foreach my $h (@ready) {
       my ($s) = grep { $_->{fh} == $h } @{$self->{streams}};
       if (not $s->process) {
