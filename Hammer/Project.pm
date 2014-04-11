@@ -1,5 +1,8 @@
 package Hammer::Project;
 
+use strict;
+use warnings;
+
 use File::Spec::Functions qw(catdir splitdir);
 use Git::Repository;
 use Hammer::Project::Status;
@@ -35,26 +38,29 @@ Git::Repository::Plugin::KK->install();
 
 sub new
 {
-  bless $_[1], $_[0];
+  my ($class, $hash, %o) = @_;
+  $hash->{_stderr} = $o{stderr};
+  $hash->{_stdout} = $o{stdout};
+  $hash->{_root}   = $o{root};
+  bless $hash, $class;
 }
 
 ## get the absolute base path to the work tree of this project
 sub abs_path
 {
   my $self = shift;
-  my $base = ::repo_base();
+  my $base = $self->{_root};
   return catdir($base, $self->{path});
 }
 
-sub repo_dir_rel
+sub ham_dir_rel
 {
-  my ($self, $sub) = @_;
+  my ($self, $sub, $dir) = @_;
   $sub = $self->{path} unless defined $sub;
   $sub = substr $sub, 1 if substr($sub, 0, 1) eq '/';
   my @d = splitdir($sub);
-  my $pfx = $repo_subdir;
-  $pfx = catdir('..', $pfx) foreach @d;
-  return $pfx;
+  $dir = catdir('..', $dir) foreach @d;
+  return $dir;
 }
 
 ## test if the work tree diretory exists
@@ -120,11 +126,23 @@ sub init
                                                               { env => { LC_ALL => 'C' } });
 }
 
+sub logerr
+{
+  my $self = shift;
+  push @{$self->{_stderr}}, map { "$self->{path}: $_" } @_;
+}
+
+sub loginfo
+{
+  my $self = shift;
+  push @{$self->{_stdout}}, map { "$self->{path}: $_" } @_;
+}
+
 ## do a conditional checkout for sync
 sub sync_checkout
 {
   my ($self, $opts) = @_;
-  my $git = $self->git($err);
+  my $git = $self->git($self->{_stderr});
   return 0 unless defined $git;
 
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
@@ -138,7 +156,7 @@ sub sync_checkout
         $self->checkout($self->{revision});
         $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       } else {
-        push @$info, "$self->{path}: not on branch $self->{revision}, skip rebase";
+        $self->loginfo("not on branch $self->{revision}, skip rebase");
         return 1;
       }
     }
@@ -147,29 +165,29 @@ sub sync_checkout
     my $remote_ref_n = "refs/remotes/$remote/$head";
     my $remote_ref = $git->rev_parse($remote_ref_n);
     if (not $remote_ref) {
-      push @$info, "$self->{name}: no corresponding remote branch found ($head), skipping rebase";
+      $self->loginfo("no corresponding remote branch found ($head), skipping rebase");
       return 1;
     }
 
-    push @$info, map { "$self->{path}: $_" } $git->run('rebase', $remote_ref_n);
+    $self->loginfo($git->run('rebase', $remote_ref_n));
     return 1;
   }
 
   my $revision = $self->{revision};
   print STDERR "checkout $self->{name} @ $self->{path} ($revision)\n";
   if (not defined $revision) {
-    push @$err, "$self->{name} @ $self->{path} has no revision to checkout";
+    $self->logerr("has no revision to checkout");
     return 0;
   }
 
   if (not defined $self->{_remote} or not defined $self->{_remote}->{name}) {
-    push @$err, "$self->{name} @ $self->{path} has no valid remote";
+    $self->logerr("has no valid remote");
     return 0;
   }
 
   my $remote_name = $self->{_remote}->{name};
   if (not $git->rev_parse("$remote_name/$revision")) {
-    push @$err, "$self->{name} @ $self->{path} has no branch named $revision";
+    $self->logerr("has no branch named $revision");
     return 0;
   }
 
@@ -187,15 +205,16 @@ sub prepare
     my $hooks = $git->git_dir.'/hooks';
     if (not -e "$hooks/commit-msg") {
       make_path($hooks) unless -d $hooks;
-      my $base = ::repo_base();
+      my $base = $self->{_root};
       if (index($hooks, $base) != 0) {
-        push @$err, "$hooks is not within our repo at $base";
+        $self->logerr("$hooks is not within our repo at $base");
         return 0;
       }
 
-      my $rel_hooks = $self->repo_dir_rel(substr $hooks, length($base));
-      symlink(catdir($rel_hooks, "hooks/commit-msg"), "$hooks/commit-msg")
-        or push @$err, "fatal: link $hooks/commit-msg: $!";
+      my $rel_hooks = $self->ham_dir_rel(substr($hooks, length($base)),
+                                         '.ham/hooks/commit-msg');
+      symlink($rel_hooks, "$hooks/commit-msg")
+        or $self->logerr("fatal: link $hooks/commit-msg: $!");
     }
 
     $git->run(config => '--bool', 'gerrit.createChangeId', 'true');
@@ -247,7 +266,7 @@ sub checkout
 
   my $git = $r->git;
   if (not $git) {
-    push @$err, "$r->{name} in $r->{path} is no git repo (may be you need 'sync')";
+    $r->logerr("is no git repo (may be you need 'sync')");
     return 128;
   }
 
@@ -259,7 +278,7 @@ sub checkout
   my @cerr = $cmd->stderr->getlines;
 
   if (grep /invalid reference: $$branch/, @cerr) {
-    push @$info, "$r->{name} has no refernece $$branch, stay at the previous head ($head)";
+    $r->loginfo("has no refernece $$branch, stay at the previous head ($head)");
     return 128;
   }
   if (grep /(Already on )|(Switched to branch )'$$branch'/, @cerr) {
@@ -272,9 +291,8 @@ sub checkout
   }
 
   if (@cerr) {
-    push @$err, "$r->{name} in $r->{path}";
     chomp(@cerr);
-    push @$err, @cerr;
+    $r->logerr(@cerr);
   }
   return $cmd->exit;
 }
@@ -305,7 +323,7 @@ sub sync
 sub status
 {
   my $self = shift;
-  my $r = $self->git($err);
+  my $r = $self->git($self->{_stderr});
   return unless $r;
   return Hammer::Project::Status->new($r->run(status => '--porcelain', '-b'));
 }
@@ -363,10 +381,10 @@ sub check_rev_list
   {
     my ($msg, $e) = @_;
     return unless @$e;
-    push @$err, "$prj->{path}: branch $src_br: $msg";
+    $prj->logerr("branch $src_br: $msg");
     foreach my $c (@$e) {
       my $x = $r->run('log', '-n', '1' ,'--oneline', '--color=always', $c);
-      push @$err, "  $x";
+      $prj->logerr("  $x");
     }
   };
 
@@ -384,7 +402,7 @@ sub check_rev_list
 sub check_for_upload
 {
   my ($prj, $warn, $src_br, $dst_br, $approve_cb) = @_;
-  my $r = $prj->git($err);
+  my $r = $prj->git($prj->{_stderr});
   my $src_rev = $r->rev_parse($src_br);
 
   if (not $src_rev) {
@@ -407,7 +425,7 @@ sub check_for_upload
 
   my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
   if (not @commits) {
-    push @$err, "$prj->{path}: $src_br is not derived from $rem_br";
+    $prj->logerr("$src_br is not derived from $rem_br");
     return 0;
   }
 
@@ -418,7 +436,7 @@ sub check_for_upload
   my $num_changes = scalar(@commits);
   if ($num_changes > 1) {
     if (not defined $approve_cb or not $approve_cb->($prj, \@commits)) {
-      push @$err, "$prj->{path}: branch $src_br has more than one ($num_changes) change for $rem_br";
+      $prj->logerr("branch $src_br has more than one ($num_changes) change for $rem_br");
       return 0;
     }
   }

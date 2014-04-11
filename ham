@@ -1,6 +1,7 @@
 #! /usr/bin/perl -w
 
 use strict;
+use warnings;
 
 BEGIN {
   use File::Basename qw(dirname);
@@ -213,7 +214,7 @@ sub load_projects
     }
 
     $r->{_remote} = $manifest->{remote}->{$r->{remote}};
-    $r = Hammer::Project->new($r);
+    $r = Hammer::Project->new($r, root => repo_base(), stderr => $err, stdout => $info);
   }
 
   foreach my $r (values %{$manifest->{remote}}) {

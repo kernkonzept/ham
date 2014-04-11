@@ -1,5 +1,8 @@
 package Hammer::Project::Status;
 
+use strict;
+use warnings;
+
 sub new
 {
   my ($p, @s) = @_;
