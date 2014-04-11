@@ -42,7 +42,7 @@ sub work
 {
   my $self = shift;
   while (scalar(@{$self->{queue}})) {
-    $self->_run_next unless $self->full;
+    next if not $self->full and $self->_run_next;
     $self->{sp}->process;
   }
 
