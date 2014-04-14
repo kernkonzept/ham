@@ -278,7 +278,7 @@ sub checkout
   my @cerr = $cmd->stderr->getlines;
 
   if (grep /invalid reference: $$branch/, @cerr) {
-    $r->loginfo("has no refernece $$branch, stay at the previous head ($head)");
+    $r->loginfo("has no reference $$branch, stay at the previous head ($head)");
     return 128;
   }
   if (grep /(Already on )|(Switched to branch )'$$branch'/, @cerr) {
