@@ -25,6 +25,8 @@ use JSON;
 
 my $prog = 'ham';
 
+my $user_config = File::Spec->catdir($ENV{HOME}, ".hamconfig");
+
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
   if (!$@) {
@@ -518,8 +520,6 @@ $commands->add(checkout => {
   desc => 'checkout <branch> in all projects'
 });
 
-$commands->alias(co => 'checkout');
-
 sub cmd_checkout
 {
   my ($opts, $command, $cmd) = @_;
@@ -849,9 +849,6 @@ $commands->add(download => {
   }
 });
 
-$commands->alias('cherry-pick' => 'download -c');
-$commands->alias('merge' => 'download -p');
-
 
 ###### download-id ####################################
 $commands->add('download-id' => {
@@ -961,9 +958,6 @@ $commands->add('download-id' => {
     return fetch_and_co_changes($opts, $prjs, \%get_change);
   }
 });
-
-$commands->alias('cherry-pick-id' => 'download-id -c');
-$commands->alias('merge-id' => 'download-id -p');
 
 
 ###### diff ####################################
@@ -1317,6 +1311,20 @@ $commands->add('add' => {
   }
 });
 
+
+if (-r $user_config) {
+  my @cfg = qx{git config --file $user_config --list};
+  my %config = ();
+  foreach (@cfg) {
+    if (/^([^=]+)\.([^.]+)=(.*)$/) {
+      $config{$1}{$2} = $3;
+    }
+  }
+
+  while (my ($alias, $t) = each %{$config{alias}}) {
+    $commands->alias($alias, $t);
+  }
+}
 
 ## the main program #####################################
 exit($commands->run($prog));
