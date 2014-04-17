@@ -600,30 +600,39 @@ $commands->add(
 );
 
 ###### remote add ####################################
-$commands->sub->{remote}->add(
-  add => {
-    cmd  => \&cmd_remote_add,
-    syn  => '%c <remote-name> <url> [<project>...]',
-    desc => 'add a repository remote for to each git repo using <url> as prefix'
-  }
-);
-
-sub cmd_remote_add
+sub cmd_remote_xxx
 {
+  my ($what, $x, $command, $cmd) = @_;
   my $name = shift @ARGV;
-  $_[2]->print_usage($_[1]) unless defined $name;
+  $cmd->print_usage($command) unless defined $name;
   my $url = shift @ARGV;
-  $_[2]->print_usage($_[1]) unless defined $url;
+  $cmd->print_usage($command) unless defined $url;
   $url .= '/' unless substr($url, -1, 1) eq '/';
   $url = URI->new($url);
   foreach_prj {
     my $r = $_;
     my $rurl = URI->new_abs($r->{name}, $url);
     #print $url, " => ", $rurl, "\n";
-    $r->git->run(remote => 'add', $name, $rurl->as_string);
+    $r->git->run(remote => $what, $name, $rurl->as_string);
   };
   return 0;
 }
+
+$commands->sub->{remote}->add(
+  add => {
+    syn  => '%c <remote-name> <url> [<project>...]',
+    desc => 'add a repository remote for to each git repo using <url> as prefix',
+    cmd  => sub { cmd_remote_xxx('add', @_) }
+  }
+);
+
+$commands->sub->{remote}->add(
+  'set-url' => {
+    syn  => '%c <remote-name> <url> [<project>...]',
+    desc => 'set the url for each git repo using <url> as prefix',
+    cmd  => sub { cmd_remote_xxx('set-url', @_) }
+  }
+);
 
 
 sub approve_dependent_changes
