@@ -224,11 +224,20 @@ sub prepare
   return 1;
 }
 
+my $trace = 0;
 
 sub _fetch_progress
 {
   local $_ = shift;
   my $self = shift;
+  s|\n||gm;
+  if ($_ ne '' and $self->{trace_fetch} or $trace) {
+    print STDERR "$_\n";
+  } elsif (/^fatal:|^ssh:/) {
+    $self->{trace_fetch} = 1;
+    print STDERR "$_\n";
+  }
+
   if (/^remote: Finding sources:\s*([0-9]+%).*$/) {
     return "$self->{name}: $1";
   } elsif (/^Receiving object:\s*([0-9]+%).*$/) {
