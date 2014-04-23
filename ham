@@ -16,6 +16,7 @@ use Hammer::Subcommand;
 use Hammer::Project;
 
 use XML::Simple;
+use File::Spec::Functions qw(catdir);
 use File::Spec;
 use File::Path qw(make_path);
 use URI;
@@ -310,6 +311,22 @@ sub place_commit_msg_hook
   chmod 0755, "$d/hooks/commit-msg";
 }
 
+sub manifest_prj
+{
+  my ( $url, %opts ) = @_;
+  my $p = {
+    name => '',
+    path => "$repo_subdir/manifests",
+    remote => 'origin',
+    _remote => { name => 'origin', fetch => $url, review => $url },
+    revision => $opts{revision},
+  };
+  $p->{revision} = 'master' unless $p->{revision};
+  my $r = $opts{root};
+  $r = repo_base() unless $r;
+  return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
+}
+
 ###### init #############################################
 $commands->add(init => {
   cmd => \&cmd_init,
@@ -323,7 +340,7 @@ $commands->add(init => {
 
 sub cmd_init
 {
-  my $opt = shift;
+  my ($opt, $command, $cmd) = @_;
   my $repo_dat_src = $opt->{file};
   my $repodir = get_repo_dir(1);
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_url')) {
@@ -342,12 +359,19 @@ sub cmd_init
   }
 
   $repo_dir = $repo_subdir;
+  place_commit_msg_hook();
   if (defined $opt->{url}) {
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
-    mkdir($repo_subdir);
-    Git::Repository->run(clone => $opt->{url}, "$repo_subdir/manifests",
-                         { env => { LC_ALL => 'C' } });
+    #mkdir($repo_subdir);
+    my $manifest = manifest_prj($opt->{url}, root => '.');
+    my $q = Hammer::Process_queue->new();
+    $q->queue(sub { $manifest->sync; });
+    $q->work;
+    print_errors(exit => 128);
+    print STDERR "Preparing manifest\n";
+    $manifest->prepare();
+    print_errors(exit => 128);
     symlink("manifests/$repo_dat_src", "$repo_subdir/manifest.xml");
     open my $u, ">$repo_subdir/manifests_url";
     print $u "$opt->{url}\n";
@@ -365,7 +389,6 @@ sub cmd_init
     close $rd;
   }
 
-  place_commit_msg_hook();
   return 0;
 }
 
@@ -654,6 +677,8 @@ $commands->add(upload => {
   cmd => \&cmd_upload,
   syn => [
     '%c %o [<project>...]',
+    { config => [ 'no_ignore_case' ] },
+    [ 'draft|d',         'submit as draft' ],
     [ 't',               'Use branch name as topic' ],
     [ 'topic=s',         'Set <topic> as topic', { arg => '<topic>' } ],
     [ 're|reviewers=s@', q|Add reviewers. This option takes a comma separated
@@ -719,9 +744,12 @@ sub cmd_upload
     push @base_attr, "cc=$c";
   }
 
+  my $target = 'for';
+  $target = 'drafts' if ($opts->{draft});
+
   foreach my $p (@good_projects) {
     my ($prj, $src_br, $dst_br) = @$p;
-    my $dst_ref = "refs/for/".$dst_br;
+    my $dst_ref = catdir('refs', $target, $dst_br);
     my @attrs;
     my $r = $prj->bare_git;
     if ($opts->{topic}) {
