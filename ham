@@ -832,9 +832,11 @@ sub fetch_and_co_changes
     my $c = $changes->{$prj->{name}};
     my $change = $c->{change};
     my $patchset = $c->{patchset};
+    #my $rev = $c->{chg}{currentPatchSet}{revision};
 
     $msg =~ s,%c,$change,g;
     $msg =~ s,%p,$patchset,g;
+    #$msg =~ s,%r,$rev,g;
 
     print "  $prj->{name} [$remote_name]: $msg\n";
   }
@@ -895,19 +897,29 @@ $commands->add('download-id' => {
     my ($opts, $command, $cmd) = @_;
     my $change_id = shift @ARGV;
     $cmd->usage_error($command, "error: missing change id") unless defined $change_id;
-    my $prjs = filter_projects(load_projects());
+
+    my $all_prjs = filter_projects(load_projects());
+    my %change_ids = ( $change_id => 1 );
+    my $recurse = 0;
+
+    while (1) {
+    my $prjs = $all_prjs;
+
     my %queries = ();
     foreach my $p (values %$prjs) {
-      my $uri = URI->new($p->{_remote}->{fetch});
-      if ($uri->scheme eq 'ssh') {
-        my $query = 'ssh';
-        $query .= ' -p '.$uri->_port if defined $uri->_port;
-        $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
-        $query .= ' '.$uri->host;
-        $query .= " gerrit query --patch-sets --format=JSON change:$change_id";
-        $queries{$query} = 1;
-      } else {
-        push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
+      foreach my $chid (keys %change_ids) {
+        next if not $change_ids{$chid};
+        my $uri = URI->new($p->{_remote}->{fetch});
+        if ($uri->scheme eq 'ssh') {
+          my $query = 'ssh';
+          $query .= ' -p '.$uri->_port if defined $uri->_port;
+          $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
+          $query .= ' '.$uri->host;
+          $query .= " gerrit query --current-patch-set --format=JSON change:$chid";
+          $queries{$query} = 1;
+        } else {
+          push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
+        }
       }
     }
 
@@ -933,7 +945,7 @@ $commands->add('download-id' => {
         }
         next if defined $q->{type} and $q->{type} eq 'stats';
         if (not defined $q->{project} or not defined $q->{id}
-            or not defined $q->{patchSets} or not defined $q->{number}
+            or not defined $q->{currentPatchSet} or not defined $q->{number}
             or not defined $q->{branch}) {
           push @$err, "the query result seems to be no change '$j'";
           next;
@@ -946,11 +958,13 @@ $commands->add('download-id' => {
     print_errors(exit => 128);
 
     if (not @changes) {
-      print STDERR "no changes for id $change_id found\n";
+      print STDERR "no changes for id ".join(' ',keys %change_ids)." found\n";
       exit(0);
     }
 
     my $prjs2 = filter_projects($prjs, [ map { $_->{project} } @changes ]);
+    return 0 if not %$prjs2 and $recurse;
+
     if (not %$prjs2) {
       print STDERR "no matching projects for id $change_id found\n";
       print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
@@ -963,12 +977,12 @@ $commands->add('download-id' => {
     print "found change $change_id in the following projects:\n". join(' ', sort keys %$prjs)."\n";
     my %get_change = ();
     foreach my $c (@changes) {
+      next if not $c->{open};
+      next if not $prjs->{$c->{project}};
       my $x = { change => $c->{number}, patchset => 1, chg => $c };
       my $g = \$get_change{$c->{project}};
       $$g = [] unless defined $$g;
-      foreach my $p (@{$c->{patchSets}}) {
-        $x->{patchset} = $p->{number} if $x->{patchset} < $p->{number};
-      }
+      $x->{patchset} = $c->{currentPatchSet}{number};
       push @$$g, $x;
     }
 
@@ -983,7 +997,33 @@ $commands->add('download-id' => {
 
     print_errors(exit => 128);
 
-    return fetch_and_co_changes($opts, $prjs, \%get_change);
+    my $r = fetch_and_co_changes($opts, $prjs, \%get_change);
+
+    return $r if $r;
+
+    foreach my $prj_name (keys %get_change) {
+      my $c = $get_change{$prj_name};
+      my $p = $prjs->{$prj_name};
+      my $revs = $p->git->run('rev-list', '^'.$p->{revision}, 'HEAD', '--');
+      my $cmd = $p->git->command('cat-file', '--batch', { input => "$revs\n" });
+      foreach my $chid (grep { s/^Change-Id:\s+(\S+)/$1/ } $cmd->final_output) {
+        if (defined $change_ids{$chid}) {
+          delete $change_ids{$chid};
+        } else {
+          $change_ids{$chid} = 1;
+        }
+      }
+    }
+
+    if (%change_ids) {
+      $all_prjs = filter_projects($all_prjs, [ '!', (keys %get_change) ]);
+      $recurse = 1;
+    } else {
+      return $r;
+    }
+  }
+
+    return 0;
   }
 });
 
