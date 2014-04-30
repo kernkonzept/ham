@@ -952,6 +952,9 @@ $commands->add('download-id' => {
           next;
         }
 
+        next if not $q->{open};
+        next if not $prjs->{$q->{project}};
+
         push @changes, $q;
       }
     }
@@ -978,8 +981,6 @@ $commands->add('download-id' => {
     print "found change $change_id in the following projects:\n". join(' ', sort keys %$prjs)."\n";
     my %get_change = ();
     foreach my $c (@changes) {
-      next if not $c->{open};
-      next if not $prjs->{$c->{project}};
       my $x = { change => $c->{number}, patchset => 1, chg => $c };
       my $g = \$get_change{$c->{project}};
       $$g = [] unless defined $$g;
