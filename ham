@@ -577,7 +577,7 @@ sub cmd_start
   my @args = ('--track', '-b', $branch);
   push @args, $base if defined $base and $base ne '';
 
-  return foreach_prj { $_->checkout(@args) };
+  return foreach_prj { $_->checkout(@args); 0;};
 }
 
 
@@ -637,6 +637,7 @@ sub cmd_remote_xxx
     my $rurl = URI->new_abs($r->{name}, $url);
     #print $url, " => ", $rurl, "\n";
     $r->git->run(remote => $what, $name, $rurl->as_string);
+    0;
   };
   return 0;
 }
