@@ -1008,7 +1008,7 @@ $commands->add('download-id' => {
       my $p = $prjs->{$prj_name};
       my $revs = $p->git->run('rev-list', '^'.$p->{revision}, 'HEAD', '--');
       my $cmd = $p->git->command('cat-file', '--batch', { input => "$revs\n" });
-      foreach my $chid (grep { s/^Change-Id:\s+(\S+)/$1/ } $cmd->final_output) {
+      foreach my $chid (grep { s/^(?:Change-Id|Requires-Change-Id):\s+(\S+)/$1/ } $cmd->final_output) {
         if (defined $change_ids{$chid}) {
           delete $change_ids{$chid};
         } else {
