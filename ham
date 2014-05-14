@@ -1007,12 +1007,11 @@ $commands->add('download-id' => {
     foreach my $prj_name (keys %get_change) {
       my $c = $get_change{$prj_name};
       my $p = $prjs->{$prj_name};
-      my @revs = $p->git->run('rev-list', '^'.$p->{revision}, 'HEAD', '--');
+      # FIXME: should use remote revision here: refs/remotes/<xx>/$p->{revision}
+      my @revs = $p->git->run('rev-list', '--max-count', '100', '--sparse',
+                              '^'.$p->{revision}, 'HEAD', '--not', '--remotes',
+                              '--');
       chomp (@revs);
-      if ($#revs > 15) {
-        push @$info, "warning: triming too large rev-list with ".scalar(@revs)." elements to 15";
-        $#revs = 15;
-      }
 
       my $cmd = $p->git->command('cat-file', '--batch', { input => join("\n", @revs)."\n" });
       foreach my $chid (grep { s/^(?:Change-Id|Requires-Change-Id):\s+(\S+)/$1/ } $cmd->final_output) {
