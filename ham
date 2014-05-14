@@ -962,18 +962,19 @@ $commands->add('download-id' => {
     print_errors(exit => 128);
 
     if (not @changes) {
+      return 0 if $recurse;
       print STDERR "no changes for id ".join(' ',keys %change_ids)." found\n";
-      exit(0);
+      return 0;
     }
 
     my $prjs2 = filter_projects($prjs, [ map { $_->{project} } @changes ]);
-    return 0 if not %$prjs2 and $recurse;
 
     if (not %$prjs2) {
+      return 0 if $recurse;
       print STDERR "no matching projects for id $change_id found\n";
       print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
       print STDERR "prjs w/ change: ".join(' ', sort map { $_->{project} } @changes)."\n";
-      exit(1);
+      return 1;
     }
 
     $prjs = $prjs2;
