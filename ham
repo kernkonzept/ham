@@ -900,7 +900,8 @@ $commands->add('download-id' => {
     $cmd->usage_error($command, "error: missing change id") unless defined $change_id;
 
     my $all_prjs = filter_projects(load_projects());
-    my %change_ids = ( $change_id => 1 );
+    my %new_change_ids = ( $change_id => 1 );
+    my %done_change_ids = ();
     my $recurse = 0;
 
     while (1) {
@@ -908,8 +909,7 @@ $commands->add('download-id' => {
 
     my %queries = ();
     foreach my $p (values %$prjs) {
-      foreach my $chid (keys %change_ids) {
-        next if not $change_ids{$chid};
+      foreach my $chid (keys %new_change_ids) {
         my $uri = URI->new($p->{_remote}->{fetch});
         if ($uri->scheme eq 'ssh') {
           my $query = 'ssh';
@@ -963,7 +963,7 @@ $commands->add('download-id' => {
 
     if (not @changes) {
       return 0 if $recurse;
-      print STDERR "no changes for id ".join(' ',keys %change_ids)." found\n";
+      print STDERR "no changes for id ".join(' ',keys %new_change_ids)." found\n";
       return 0;
     }
 
@@ -1004,6 +1004,12 @@ $commands->add('download-id' => {
 
     return $r if $r;
 
+    foreach my $id (keys %new_change_ids) {
+      $done_change_ids{$id} = 1;
+    }
+
+    %new_change_ids = ();
+
     foreach my $prj_name (keys %get_change) {
       my $c = $get_change{$prj_name};
       my $p = $prjs->{$prj_name};
@@ -1015,15 +1021,11 @@ $commands->add('download-id' => {
 
       my $cmd = $p->git->command('cat-file', '--batch', { input => join("\n", @revs)."\n" });
       foreach my $chid (grep { s/^(?:Change-Id|Requires-Change-Id):\s+(\S+)/$1/ } $cmd->final_output) {
-        if (defined $change_ids{$chid}) {
-          delete $change_ids{$chid};
-        } else {
-          $change_ids{$chid} = 1;
-        }
+        $new_change_ids{$chid} = 1 if not defined $done_change_ids{$chid};
       }
     }
 
-    if (%change_ids) {
+    if (%new_change_ids) {
       $all_prjs = filter_projects($all_prjs, [ '!', (keys %get_change) ]);
       $recurse = 1;
     } else {
