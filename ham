@@ -538,7 +538,7 @@ $commands->add(checkout => {
   cmd  => \&cmd_checkout,
   syn  => [
     '%c <branch> [<project>...]',
-    [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be interated' ]
+    [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be iterated' ]
   ],
   desc => 'checkout <branch> in all projects'
 });
