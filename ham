@@ -364,7 +364,7 @@ sub cmd_init
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
     #mkdir($repo_subdir);
-    my $manifest = manifest_prj($opt->{url}, root => '.');
+    my $manifest = manifest_prj($opt->{url}, root => realpath('.'));
     my $q = Hammer::Process_queue->new();
     $q->queue(sub { $manifest->sync; });
     $q->work;

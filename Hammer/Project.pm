@@ -320,8 +320,10 @@ sub sync
   } else {
     #print "run: ($self->{path}) git clone $remote_name\n";
     my $url = $self->{_remote}->{fetch};
-    $url .= '/' unless substr($url, -1, 1) eq '/';
-    $url .= $self->{name};
+    if ($self->{name} ne '') {
+      $url .= '/' unless substr($url, -1, 1) eq '/';
+      $url .= $self->{name};
+    }
     $r = $self->init;
     $r->run('remote', 'add', $remote_name, $url);
     return $self->fetch($remote_name);
