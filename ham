@@ -1339,12 +1339,13 @@ $commands->add('commit' => {
 
     my $empty = 1;
     open $commit_msg, "<$file" or die "fatal: cannot open message file $file: $!";
+    @m = ();
     while (<$commit_msg>) {
       next if /^#/;
+      push @m, $_;
       next if /^\s*$/;
       next if /^Change-Id:/;
       $empty = 0;
-      last;
     }
     close $commit_msg;
 
@@ -1352,6 +1353,10 @@ $commands->add('commit' => {
       print STDERR "Aborting commit due to empty commit message.\n";
       return 100;
     }
+
+    open  $commit_msg, "+>$file" or die "fatal: cannot open message file $file: $!";
+    print $commit_msg "$_" foreach @m;
+    close $commit_msg;
 
     foreach my $p (@commit_prj) {
       print "commting in: $p->{path}\n";
