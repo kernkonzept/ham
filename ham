@@ -804,6 +804,7 @@ sub fetch_and_co_changes
   if (defined $opts->{pull}) {
     $action = sub {
       my $git = $_[0]->git;
+      $git->run("checkout", "--detach") if $opts->{detach};
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       push @$info, $git->run('merge', 'FETCH_HEAD');
       push @log, [ $_[0], "merged %c/%p into $head" ];
@@ -811,6 +812,7 @@ sub fetch_and_co_changes
   } elsif (defined $opts->{'cherry-pick'}) {
     $action = sub {
       my $git = $_[0]->git;
+      $git->run("checkout", "--detach") if $opts->{detach};
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       push @$info, $git->run('cherry-pick', 'FETCH_HEAD');
       push @log, [ $_[0], "cherry picked %c/%p onto $head" ];
@@ -857,6 +859,7 @@ $commands->add(download => {
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
                              instead of checking out the change| ],
     [ 'pull|p',            q|Pull (merge) the change into the current branch|],
+    [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'remote|r=s',        q|Use <remote> as git remote to fetch the change,
                              instead of using the remote configured in the manifest.|,
                            { arg => '<remote>' } ]
@@ -892,6 +895,7 @@ $commands->add('download-id' => {
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
                              instead of checking out the change| ],
     [ 'pull|p',            q|Pull (merge) the change into the current branch|],
+    [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'branch|b=s',        q|Get the change for the specified branch, usually
                              any matching change will be downloaded as long as
                              there is no ambiguity.|, { arg => '<branch>' } ],
