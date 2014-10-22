@@ -320,9 +320,16 @@ sub sync
   } else {
     #print "run: ($self->{path}) git clone $remote_name\n";
     my $url = $self->{_remote}->{fetch};
+
+    my($scheme, $authority, $path, $query, $fragment) =
+      $url =~ m|(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?|;
+
+    $path = "" unless defined $path;
+    $query = "" unless defined $query;
+    $fragment = "" unless defined $fragment;
+
     if ($self->{name} ne '') {
-      $url .= '/' unless substr($url, -1, 1) eq '/';
-      $url .= $self->{name};
+      $url = "$scheme://$authority$path/$self->{name}$query$fragment";
     }
     $r = $self->init;
     $r->run('remote', 'add', $remote_name, $url);
