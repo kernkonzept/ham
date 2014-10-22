@@ -197,9 +197,45 @@ sub apply_default
   $r->{$what} = $manifest->{default}->{$what} unless defined $r->{$what};
 }
 
+sub plain_git_project
+{
+  my $g = Git::Repository->new();
+  die "current directory is neither a ham nor a git repository" unless $g;
+
+  my @remotes = $g->run(config => '--bool', '--get-regexp', '^remote\.[^.]*\.ham$', 'true');
+  @remotes = grep { s/^remote\.([^.]*)\.ham\s+true$/$1/ } @remotes;
+  die "no remotes configured for ham found" unless @remotes;
+
+  my $remote_name = $remotes[0];
+  @remotes = $g->run(remote => '-v');
+  my @rf = grep { s/^$remote_name\s+(\S+)\s+\(fetch\)$/$1/ } @remotes;
+  die "no remote named '$remote_name' found in git repo" unless @rf;
+
+  my $fetch = $rf[0];
+  $fetch =~ s|git\+ssh://|ssh://|;
+  $fetch = URI->new($fetch);
+  my $prjname = substr ($fetch->path, 1);
+  $prjname =~ s/(.*)\.git$/$1/;
+
+  my $p = Hammer::Project->new({
+      name => $prjname,
+      path => '.',
+      remote => $remote_name,
+      _remote => { name => $remote_name, fetch => $fetch }
+    }, root => $g->work_tree, stderr => $err, stdout => $info);
+
+  print "plain git project: $p->{name}\n";
+  return { $p->{name} => $p };
+}
+
 sub load_projects
 {
   my $file = shift;
+  my $ham_dir = get_repo_dir(1);
+  if (not $ham_dir) {
+    return plain_git_project();
+  }
+
   $file = repo_manifest();
   open my $mf, "<".get_repo_dir().'/manifests_url';
   my $manifest_url = <$mf>;
