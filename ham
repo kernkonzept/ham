@@ -471,17 +471,17 @@ $commands->add(status => {
       } else {
         sub show
         {
-          my ($msg, @i) = @_;
+          my ($msg, $color, @i) = @_;
           if (@i) {
             print "\n$msg:\n";
-            print "\t".colored($_, 'red')."\n" foreach @i;
+            print "\t".colored($_, $color)."\n" foreach @i;
           }
         }
 
-        show("Files with merge conflicts", $s->pretty_conflicts($p->{path}));
-        show("Changes staged for commit", $s->pretty_index($p->{path}));
-        show("Changes not staged for commit", $s->pretty_changed($p->{path}));
-        show("Untracked files", $s->pretty_untracked($p->{path}));
+        show("Files with merge conflicts", 'red', $s->pretty_conflicts($p->{path}));
+        show("Changes staged for commit", 'green', $s->pretty_index($p->{path}));
+        show("Changes not staged for commit", 'red', $s->pretty_changed($p->{path}));
+        show("Untracked files", 'red', $s->pretty_untracked($p->{path}));
         print "\n";
       }
       return 0;
