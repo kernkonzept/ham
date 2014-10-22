@@ -222,7 +222,9 @@ sub load_projects
 
   foreach my $r (values %{$manifest->{remote}}) {
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
+    $r->{fetch} =~ s|^(.*)/$|$1|;
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
+    $r->{review} =~ s|^(.*)/$|$1|;
   }
   return $projects;
 }
