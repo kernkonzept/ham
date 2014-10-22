@@ -598,7 +598,9 @@ sub cmd_info
     my $g = $p->git;
     my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
     print colored("$p->{name}: in $p->{path}\n", 'bold');
-    print "  remote: $p->{remote} @ branch ".colored($p->{revision}, 'yellow')."\n";
+    my $remote_branch = $p->{revision};
+    $remote_branch = "<unknown branch>" unless defined $remote_branch;
+    print "  remote: $p->{remote} @ branch ".colored($remote_branch, 'yellow')."\n";
     print "  local revision: ".colored($head, 'yellow')."\n";
     my $s = $p->status;
     my $dirty = $s->is_dirty;
