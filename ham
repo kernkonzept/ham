@@ -1133,7 +1133,7 @@ $commands->add('log' => {
             print "$prj->{name}: $prj->{path}\n";
           }
           print "  $_\n";
-        });
+        }, {fatal => [-128 ]});
 
       print "\n" unless $first;
 
