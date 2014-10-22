@@ -895,6 +895,7 @@ $commands->add('download-id' => {
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
                              instead of checking out the change| ],
     [ 'pull|p',            q|Pull (merge) the change into the current branch|],
+    [ 'recursive-pull|r',  q|use merge for all the recursively required changes|],
     [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'branch|b=s',        q|Get the change for the specified branch, usually
                              any matching change will be downloaded as long as
@@ -987,30 +988,54 @@ $commands->add('download-id' => {
 
       $prjs = $prjs2;
 
-      print "found change $change_id in the following projects:\n". join(' ', sort keys %$prjs)."\n";
+      print "found change(s) ".join(' ', map { $_->{id} } @changes).
+            " in the following projects:\n".join(' ', sort keys %$prjs)."\n";
       my %get_change = ();
       foreach my $c (@changes) {
         my $x = { change => $c->{number}, patchset => 1, chg => $c };
-        my $g = \$get_change{$c->{project}};
+        my $g = \$get_change{$c->{project}}{$c->{id}};
         $$g = [] unless defined $$g;
         $x->{patchset} = $c->{currentPatchSet}{number};
         push @$$g, $x;
       }
 
       my $branch = $opts->{branch};
-      while (my ($pn, $c) = each %get_change) {
-        $c = [ grep { $_->{chg}->{branch} eq $branch } @$c ] if defined $branch;
-        if (scalar(@$c) > 1) {
-          push @$err, "$pn: $change_id is ambiguous, exists for ". join(', ', map { $_->{chg}->{branch} } @$c);
+      while (my ($pn, $chg) = each %get_change) {
+        while (my ($id, $c) = each %$chg) {
+          $c = [ grep { $_->{chg}->{branch} eq $branch } @$c ] if defined $branch;
+          if (scalar(@$c) > 1) {
+            push @$err, "$pn: $id is ambiguous, exists for ". join(', ', map { $_->{chg}->{branch} } @$c);
+          }
+          $chg->{$id} = $$c[0];
         }
-        $get_change{$pn} = $$c[0];
       }
 
       print_errors(exit => 128);
 
-      my $r = fetch_and_co_changes($opts, $prjs, \%get_change);
+      my @prj_names = keys %get_change;
 
-      return $r if $r;
+      my %copy_opts = %$opts;
+
+      while (1) {
+        my %changes_to_fetch = ();
+        while (my ($pn, $c) = each %get_change) {
+          my ($id) = (keys %$c);
+          next if not defined $id;
+          my $chg = $c->{$id};
+          $changes_to_fetch{$pn} = $chg;
+          delete $c->{$id};
+        }
+
+        last if not %changes_to_fetch;
+
+        my $r = fetch_and_co_changes(\%copy_opts, $prjs, \%changes_to_fetch);
+
+        return $r if $r;
+
+        if (not defined $copy_opts{pull} and not defined $copy_opts{'cherry-pick'}) {
+          $copy_opts{pull} = 1;
+        }
+      }
 
       foreach my $id (keys %new_change_ids) {
         $done_change_ids{$id} = 1;
@@ -1018,8 +1043,8 @@ $commands->add('download-id' => {
 
       %new_change_ids = ();
 
-      foreach my $prj_name (keys %get_change) {
-        my $c = $get_change{$prj_name};
+      foreach my $prj_name (@prj_names) {
+        #my $c = $get_change{$prj_name};
         my $p = $prjs->{$prj_name};
         # FIXME: should use remote revision here: refs/remotes/<xx>/$p->{revision}
         next unless $p->{revision};
@@ -1039,12 +1064,18 @@ $commands->add('download-id' => {
       }
 
       if (%new_change_ids) {
-        $all_prjs = filter_projects($all_prjs, [ '!', (keys %get_change) ]);
+        if (not $opts->{'recursive-pull'}) {
+          print "skip doanloading additional required changes from other projects\n";
+          return 0;
+        }
+        $all_prjs = filter_projects($all_prjs, [ '!', (@prj_names) ]);
         $recurse = 1;
+        $opts->{pull} = 1;
+        delete $opts->{'cherry-pick'};
         print "\ndownload more required changes\n";
       } else {
         print_errors(exit => 128);
-        return $r;
+        return 0;
       }
     }
 
