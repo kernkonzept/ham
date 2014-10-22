@@ -149,16 +149,30 @@ sub sync_checkout
 
   # return if we have already a valid checkout, don't touch the working copy
   if (defined $head) {
-    return 1 unless $opts->{rebase};
 
-    if ($head ne $self->{revision}) {
-      if (defined $opts->{upstream}) {
-        $self->checkout($self->{revision});
-        $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-      } else {
-        $self->loginfo("not on branch $self->{revision}, skip rebase");
-        return 1;
+    if ($opts->{rebase}) {
+      if ($head ne $self->{revision}) {
+        if (defined $opts->{upstream}) {
+          $self->checkout($self->{revision});
+          $head = $git->rev_parse('--abbrev-ref', 'HEAD');
+        } else {
+          $self->loginfo("not on branch $self->{revision}, skip rebase");
+          return 1;
+        }
       }
+    } else {
+      my $cmd = $self->git->command('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {quiet => 1, fatal => [-128 ]});
+      my @cerr = $cmd->stderr->getlines;
+      my @cout = $cmd->stdout->getlines;
+      foreach my $e (@cerr) {
+        print STDOUT "$self->{path}: $e";
+      }
+      foreach my $e (@cout) {
+        print STDOUT "$self->{path}: $e";
+      }
+      $cmd->exit;
+      #$self->loginfo($self->git->run('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {fatal => [-128 ]}));
+      return 0;
     }
 
     my $remote = $self->{_remote}->{name};
