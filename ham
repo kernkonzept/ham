@@ -672,7 +672,7 @@ sub approve_dependent_changes
   print STDERR "\ndo you want to upload these changes at once? [y/N]: ";
   my $answer = <STDIN>;
   chomp $answer;
-  return $answer eq 'y' or $answer eq 'Y' or $answer eq 'yes';
+  return $answer eq 'y' || $answer eq 'Y' || $answer eq 'yes';
 }
 
 ###### upload ####################################################
