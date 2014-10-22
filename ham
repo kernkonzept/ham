@@ -247,7 +247,7 @@ sub print_errors
     print "$i\n";
   }
 
-  $info = [];
+  @$info = ();
 
   my $errpfx = defined $opts{no_prefix} ? '' : 'error: ';
   foreach my $e (@$err) {
@@ -263,10 +263,10 @@ sub print_errors
   }
 
   if ($opts{err_val} and @$err) {
-    $err = [];
+    @$err = ();
     return $opts{err_val};
   }
-  $err = [];
+  @$err = ();
 
   return 0;
 }
