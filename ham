@@ -211,6 +211,7 @@ sub plain_git_project
   my @rf = grep { s/^$remote_name\s+(\S+)\s+\(fetch\)$/$1/ } @remotes;
   die "no remote named '$remote_name' found in git repo" unless @rf;
 
+  my $revision = $g->run(config => '--get', "ham.".$remote_name.".revision");
   my $fetch = $rf[0];
   $fetch =~ s|git\+ssh://|ssh://|;
   $fetch = URI->new($fetch);
@@ -221,7 +222,8 @@ sub plain_git_project
       name => $prjname,
       path => '.',
       remote => $remote_name,
-      _remote => { name => $remote_name, fetch => $fetch }
+      _remote => { name => $remote_name, fetch => $fetch },
+      revision => $revision,
     }, root => $g->work_tree, stderr => $err, stdout => $info);
 
   print "plain git project: $p->{name}\n";
