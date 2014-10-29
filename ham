@@ -1203,7 +1203,7 @@ $commands->add('log' => {
       my @revs = $git->run('log', '--color=always', @a, '--', sub {
           if ($first) {
             $first = 0;
-            print "$prj->{name}: $prj->{path}\n";
+            print colored("$prj->{name}: $prj->{path}", 'bold'), "\n";
           }
           print "  $_\n";
         }, {fatal => [-128 ]});
