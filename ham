@@ -264,6 +264,7 @@ sub load_projects
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
   }
+  $projects->{'.ham.manifest'} = manifest_prj();
   return $projects;
 }
 
@@ -355,7 +356,7 @@ sub manifest_prj
 {
   my ( $url, %opts ) = @_;
   my $p = {
-    name => '',
+    name => '.ham.manifest',
     path => "$repo_subdir/manifests",
     remote => 'origin',
     _remote => { name => 'origin', fetch => $url, review => $url },
