@@ -22,7 +22,7 @@ use File::Path qw(make_path);
 use URI;
 use IO::Select;
 use Cwd;
-use JSON;
+use JSON::PP;
 
 my $prog = 'ham';
 
@@ -1065,7 +1065,7 @@ $commands->add('download-id' => {
       foreach my $query (keys %queries) {
         my @json = qx($query);
         foreach my $j (@json) {
-          my $q = from_json($j);
+          my $q = decode_json($j);
           if (not defined $q) {
             push @$err, "gerrit did not return a JSON string but '$j'";
             next;
