@@ -264,7 +264,7 @@ sub load_projects
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
   }
-  $projects->{'.ham.manifest'} = manifest_prj();
+  $projects->{'.ham.manifest'} = manifest_prj($manifest_url);
   return $projects;
 }
 
