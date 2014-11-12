@@ -230,6 +230,52 @@ sub plain_git_project
   return { $p->{name} => $p };
 }
 
+# create a project for the manifest repository
+sub make_manifest_prj
+{
+  my ( %opts ) = @_;
+  my $p = {
+    name     => $opts{project},
+    path     => "$repo_subdir/manifests",
+    remote   => 'origin',
+    _remote  => { name => 'origin', fetch => $opts{url}, review => $opts{url} },
+    url      => $opts{url},
+    revision => $opts{revision},
+  };
+  my $r = $opts{root};
+  $r = repo_base() unless $r;
+  return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
+}
+
+# load the manifest infos from .ham/manifests_json and create a project
+sub manifest_prj
+{
+  my $manifest_info;
+  if (open my $mf_json, "<".get_repo_dir().'/manifests_json')
+    {
+      $manifest_info = decode_json(<$mf_json>);
+      close $mf_json;
+    }
+  else
+    {
+      print STDERR "no manifest_json foudn, trying old format manifest_url\n";
+      # old manifest_url file conversion
+
+      open my $mf, "<".get_repo_dir().'/manifests_url' or die "no manifest URL found";
+      my $manifest_url = <$mf>;
+      close $mf;
+      chomp($manifest_url);
+
+      $manifest_info = { url => $manifest_url, revision => 'master', project => 'manifest' };
+      open my $mf_json, ">".get_repo_dir().'/manifests_json' or die "cannot open manifest_json file";
+      print $mf_json encode_json($manifest_info), "\n";
+      close $mf_json;
+    }
+  return make_manifest_prj(%$manifest_info);
+}
+
+
+# load all projects, including the manifest
 sub load_projects
 {
   my $file = shift;
@@ -239,11 +285,6 @@ sub load_projects
   }
 
   $file = repo_manifest();
-  open my $mf, "<".get_repo_dir().'/manifests_url';
-  my $manifest_url = <$mf>;
-  close $mf;
-  chomp($manifest_url);
-  $manifest_url = URI->new($manifest_url);
   my $manifest = XMLin($file,
     ForceArray => ['project', 'remote'],
     KeyAttr => { project => "+name", remote => "+name" });
@@ -258,13 +299,16 @@ sub load_projects
     $r = Hammer::Project->new($r, root => repo_base(), stderr => $err, stdout => $info);
   }
 
+  my $manifest_prj = manifest_prj();
+  my $manifest_url = URI->new($manifest_prj->{url});
+
   foreach my $r (values %{$manifest->{remote}}) {
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
     $r->{fetch} =~ s|^(.*)/$|$1|;
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
   }
-  $projects->{'.ham.manifest'} = manifest_prj($manifest_url);
+  $projects->{$manifest_prj->{name}} = $manifest_prj;
   return $projects;
 }
 
@@ -352,21 +396,6 @@ sub place_commit_msg_hook
   chmod 0755, "$d/hooks/commit-msg";
 }
 
-sub manifest_prj
-{
-  my ( $url, %opts ) = @_;
-  my $p = {
-    name => '.ham.manifest',
-    path => "$repo_subdir/manifests",
-    remote => 'origin',
-    _remote => { name => 'origin', fetch => $url, review => $url },
-    revision => $opts{revision},
-  };
-  $p->{revision} = 'master' unless $p->{revision};
-  my $r = $opts{root};
-  $r = repo_base() unless $r;
-  return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
-}
 
 ###### init #############################################
 $commands->add(init => {
@@ -374,6 +403,9 @@ $commands->add(init => {
   syn => [
     '%c %o',
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
+    [ 'gerrit-url|g=s', 'URL of the gerrit server used for the manifest', { arg => '<gerrit url>' } ],
+    [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
+    [ 'branch|br=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
   ],
   desc => "initialize $prog meta project in the curent directory"
@@ -401,11 +433,29 @@ sub cmd_init
 
   $repo_dir = $repo_subdir;
   place_commit_msg_hook();
-  if (defined $opt->{url}) {
+  if (defined $opt->{url} or (defined $opt->{gerrit} and defined $opt->{project})) {
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
     #mkdir($repo_subdir);
-    my $manifest = manifest_prj($opt->{url}, root => realpath('.'));
+    if (defined $opt->{url}) {
+      my $url = $opt->{url};
+      my $prj = $url;
+      $prj =~ s|^.*/||g;
+      $opt->{project} = $prj;
+      $url =~ s|^(.*)/[^/]*$|$1|;
+      $opt->{gerrit}  = $url;
+    }
+
+    my $manifest_info = {
+      project  => $opt->{project},
+      url      => $opt->{gerrit},
+      revision => $opt->{revision}
+    };
+
+    $manifest_info->{project} = 'manifest' unless defined $manifest_info->{project};
+    $manifest_info->{revision} = 'master' unless defined $manifest_info->{revision};
+
+    my $manifest = make_manifest_prj(%$manifest_info, root     => realpath('.'));
     my $q = Hammer::Process_queue->new();
     $q->queue(sub { $manifest->sync; });
     $q->work;
@@ -414,8 +464,8 @@ sub cmd_init
     $manifest->prepare();
     print_errors(exit => 128);
     symlink("manifests/$repo_dat_src", "$repo_subdir/manifest.xml");
-    open my $u, ">$repo_subdir/manifests_url";
-    print $u "$opt->{url}\n";
+    open my $u, ">$repo_subdir/manifests_json";
+    print $u encode_json($manifest_info), "\n";
     close $u;
   } else {
     # use a local file as manifest and copy it
@@ -451,15 +501,14 @@ sub cmd_sync
 {
   my ($opts, $command, $cmd) = @_;
   # update manifest repo, if there is any
-  if (-d get_repo_dir().'/manifests/.git') {
-    my $r = Git::Repository->new(work_tree => get_repo_dir().'/manifests',
-                                 { env => { LC_ALL => 'C' } });
-    $r->run(pull => 'origin');
-  }
+  my $manifest = manifest_prj();
+  my $q = Hammer::Process_queue->new();
+  $q->queue(sub { $manifest->sync; });
+  $q->work;
+
   place_commit_msg_hook();
 
   my $projects = sorted_and_filtered_projects(\@ARGV);
-  my $q = Hammer::Process_queue->new();
 
   foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
   $q->work;
