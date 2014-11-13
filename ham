@@ -241,6 +241,7 @@ sub make_manifest_prj
     _remote  => { name => 'origin', fetch => $opts{url}, review => $opts{url} },
     url      => $opts{url},
     revision => $opts{revision},
+    is_manifest => 1,
   };
   my $r = $opts{root};
   $r = repo_base() unless $r;
@@ -903,12 +904,12 @@ sub cmd_upload
 ##############################################################
 sub fetch_and_co_changes
 {
-  my ($opts, $prjs, $changes) =  @_;
+  my ($opts, $changes) =  @_;
 
   my $q = Hammer::Process_queue->new();
-  foreach my $prj (values %$prjs) {
+  foreach my $c (values %$changes) {
+    my $prj = $c->{prj};
     my $remote_name = $prj->{_remote}->{name};
-    my $c = $changes->{$prj->{name}};
     my $change = $c->{change};
     my $patchset = $c->{patchset};
 
@@ -946,8 +947,8 @@ sub fetch_and_co_changes
     };
   }
 
-  foreach my $prj (values %$prjs) {
-    $action->($prj);
+  foreach my $c (values %$changes) {
+    $action->($c->{prj});
   }
 
   my $res = print_errors(err_val => 128);
@@ -1002,12 +1003,144 @@ $commands->add(download => {
     }
 
     return fetch_and_co_changes($opts,
-      { $prjn => $prj },
-      { $prjn => { change => $change, patchset => $patchset }}
+      { $prjn => { prj => $prj, change => $change, patchset => $patchset }}
     );
   }
 });
 
+sub gerrit_querry_changes
+{
+  my ( $prjs, $branch, $recursion, @change_ids ) = @_;
+  my %queries = ();
+  foreach my $p (values %$prjs) {
+    foreach my $chid (@change_ids) {
+      my $uri = URI->new($p->{_remote}->{fetch});
+      if ($uri->scheme eq 'ssh') {
+        my $query = 'ssh';
+        $query .= ' -p '.$uri->_port if defined $uri->_port;
+        $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
+        $query .= ' '.$uri->host;
+        $query .= " gerrit query --current-patch-set --format=JSON change:$chid";
+        $queries{$query} = 1;
+      } else {
+        push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
+      }
+    }
+  }
+
+  if (not %queries) {
+    print_errors();
+    print STDERR "error: no matching project found\n";
+    exit (1);
+  }
+
+  my @changes = ();
+
+  foreach my $query (keys %queries) {
+    my @json = qx($query);
+    foreach my $j (@json) {
+      my $q = decode_json($j);
+      if (not defined $q) {
+        push @$err, "gerrit did not return a JSON string but '$j'";
+        next;
+      }
+      if (defined $q->{type} and $q->{type} eq 'error') {
+        push @$err, "gerrit returned an error: '$q->{message}'";
+        next;
+      }
+      next if defined $q->{type} and $q->{type} eq 'stats';
+      if (not defined $q->{project} or not defined $q->{id}
+          or not defined $q->{currentPatchSet} or not defined $q->{number}
+          or not defined $q->{branch}) {
+        push @$err, "the query result seems to be no change '$j'";
+        next;
+      }
+
+      next if not $q->{open};
+      next if not $prjs->{$q->{project}};
+
+      push @changes, $q;
+    }
+  }
+
+  print_errors(exit => 128);
+
+  if (not @changes) {
+    return {} if $recursion;
+    print STDERR "no changes for id ".join(' ',@change_ids)." found\n";
+    return {};
+  }
+
+  my @used_changes = grep { exists $prjs->{$_->{project}} } @changes;
+
+  # FIXME: need to have a version to use the revision defined in the manifest
+  # as branch name for each project
+  @used_changes = grep { $_->{branch} eq $branch } @used_changes if defined $branch;
+
+  if (not @used_changes) {
+    return {} if $recursion;
+    print STDERR "no matching projects for id ".join(' ',@change_ids)." found\n";
+    print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
+    print STDERR "prjs w/ change: ".join(' ', sort map { $_->{project} } @changes)."\n";
+    return undef;
+  }
+
+  print "found change(s) ".join(' ', map { "$_->{id}: $_->{project}" } @used_changes)."\n";
+
+  my %get_change = ();
+  foreach my $c (@used_changes) {
+    my $pn = $c->{project};
+    my $id = $c->{id};
+    if (defined $get_change{$pn}{$id}) {
+      push @$err, "$pn: $id is ambiguous";
+    } else {
+      $get_change{$pn}{$id} = {
+        prj      => $prjs->{$pn},
+        change   => $c->{number},
+        patchset => $c->{currentPatchSet}{number},
+        chg      => $c
+      };
+    }
+  }
+
+  print_errors(exit => 128);
+  return \%get_change;
+}
+
+sub contains_manifest
+{
+  my $prjs = shift;
+  foreach my $p (values %$prjs) {
+    return $p if defined $p->{is_manifest};
+  }
+  return undef;
+}
+
+sub fetch_all_changes
+{
+  my ($changes, %opts) = @_;
+  while (1) {
+    my %changes_to_fetch = ();
+    while (my ($pn, $c) = each %$changes) {
+      my ($id) = (keys %$c);
+      next if not defined $id;
+      my $chg = $c->{$id};
+      $changes_to_fetch{$pn} = $chg;
+      delete $c->{$id};
+    }
+
+    return 0 if not %changes_to_fetch;
+
+    my $r = fetch_and_co_changes(\%opts, \%changes_to_fetch);
+
+    return $r if $r;
+
+    if (not defined $opts{pull} and not defined $opts{'cherry-pick'}) {
+      $opts{pull} = 1;
+    }
+  }
+  return 0;
+}
 
 ###### download-id ####################################
 $commands->add('download-id' => {
@@ -1035,128 +1168,15 @@ $commands->add('download-id' => {
     my $recurse = 0;
 
     while (1) {
-      my $prjs = $all_prjs;
+      my $changes =
+        gerrit_querry_changes($all_prjs, $opts->{branch}, $recurse, keys %new_change_ids);
 
-      my %queries = ();
-      foreach my $p (values %$prjs) {
-        foreach my $chid (keys %new_change_ids) {
-          my $uri = URI->new($p->{_remote}->{fetch});
-          if ($uri->scheme eq 'ssh') {
-            my $query = 'ssh';
-            $query .= ' -p '.$uri->_port if defined $uri->_port;
-            $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
-            $query .= ' '.$uri->host;
-            $query .= " gerrit query --current-patch-set --format=JSON change:$chid";
-            $queries{$query} = 1;
-          } else {
-            push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
-          }
-        }
-      }
+      return 1 unless defined $changes;
+      return 0 unless %$changes;
 
-      if (not %queries) {
-        print_errors();
-        print STDERR "error: no matching project found\n";
-        exit (1);
-      }
 
-      my @changes = ();
-
-      foreach my $query (keys %queries) {
-        my @json = qx($query);
-        foreach my $j (@json) {
-          my $q = decode_json($j);
-          if (not defined $q) {
-            push @$err, "gerrit did not return a JSON string but '$j'";
-            next;
-          }
-          if (defined $q->{type} and $q->{type} eq 'error') {
-            push @$err, "gerrit returned an error: '$q->{message}'";
-            next;
-          }
-          next if defined $q->{type} and $q->{type} eq 'stats';
-          if (not defined $q->{project} or not defined $q->{id}
-              or not defined $q->{currentPatchSet} or not defined $q->{number}
-              or not defined $q->{branch}) {
-            push @$err, "the query result seems to be no change '$j'";
-            next;
-          }
-
-          next if not $q->{open};
-          next if not $prjs->{$q->{project}};
-
-          push @changes, $q;
-        }
-      }
-
-      print_errors(exit => 128);
-
-      if (not @changes) {
-        return 0 if $recurse;
-        print STDERR "no changes for id ".join(' ',keys %new_change_ids)." found\n";
-        return 0;
-      }
-
-      my $prjs2 = filter_projects($prjs, [ map { $_->{project} } @changes ]);
-
-      if (not %$prjs2) {
-        return 0 if $recurse;
-        print STDERR "no matching projects for id $change_id found\n";
-        print STDERR "given projects: ".join(' ', sort keys %$prjs)."\n";
-        print STDERR "prjs w/ change: ".join(' ', sort map { $_->{project} } @changes)."\n";
-        return 1;
-      }
-
-      $prjs = $prjs2;
-
-      print "found change(s) ".join(' ', map { $_->{id} } @changes).
-            " in the following projects:\n".join(' ', sort keys %$prjs)."\n";
-      my %get_change = ();
-      foreach my $c (@changes) {
-        my $x = { change => $c->{number}, patchset => 1, chg => $c };
-        my $g = \$get_change{$c->{project}}{$c->{id}};
-        $$g = [] unless defined $$g;
-        $x->{patchset} = $c->{currentPatchSet}{number};
-        push @$$g, $x;
-      }
-
-      my $branch = $opts->{branch};
-      while (my ($pn, $chg) = each %get_change) {
-        while (my ($id, $c) = each %$chg) {
-          $c = [ grep { $_->{chg}->{branch} eq $branch } @$c ] if defined $branch;
-          if (scalar(@$c) > 1) {
-            push @$err, "$pn: $id is ambiguous, exists for ". join(', ', map { $_->{chg}->{branch} } @$c);
-          }
-          $chg->{$id} = $$c[0];
-        }
-      }
-
-      print_errors(exit => 128);
-
-      my @prj_names = keys %get_change;
-
-      my %copy_opts = %$opts;
-
-      while (1) {
-        my %changes_to_fetch = ();
-        while (my ($pn, $c) = each %get_change) {
-          my ($id) = (keys %$c);
-          next if not defined $id;
-          my $chg = $c->{$id};
-          $changes_to_fetch{$pn} = $chg;
-          delete $c->{$id};
-        }
-
-        last if not %changes_to_fetch;
-
-        my $r = fetch_and_co_changes(\%copy_opts, $prjs, \%changes_to_fetch);
-
-        return $r if $r;
-
-        if (not defined $copy_opts{pull} and not defined $copy_opts{'cherry-pick'}) {
-          $copy_opts{pull} = 1;
-        }
-      }
+      my $r = fetch_all_changes($changes, %$opts);
+      return $r if $r;
 
       foreach my $id (keys %new_change_ids) {
         $done_change_ids{$id} = 1;
@@ -1164,9 +1184,8 @@ $commands->add('download-id' => {
 
       %new_change_ids = ();
 
-      foreach my $prj_name (@prj_names) {
-        #my $c = $get_change{$prj_name};
-        my $p = $prjs->{$prj_name};
+      foreach my $prj_name (keys %$changes) {
+        my $p = $all_prjs->{$prj_name};
         # FIXME: should use remote revision here: refs/remotes/<xx>/$p->{revision}
         next unless $p->{revision};
         my @revs = $p->git->run('rev-list', '--max-count', '100', '--sparse',
@@ -1189,7 +1208,7 @@ $commands->add('download-id' => {
           print "skip doanloading additional required changes from other projects\n";
           return 0;
         }
-        $all_prjs = filter_projects($all_prjs, [ '!', (@prj_names) ]);
+        $all_prjs = filter_projects($all_prjs, [ '!', (keys %$changes) ]);
         $recurse = 1;
         $opts->{pull} = 1;
         delete $opts->{'cherry-pick'};
