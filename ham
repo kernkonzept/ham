@@ -928,8 +928,15 @@ sub fetch_and_co_changes
       my $git = $_[0]->git;
       $git->run("checkout", "--detach") if $opts->{detach};
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-      push @$info, $git->run('merge', 'FETCH_HEAD');
-      push @log, [ $_[0], "merged %c/%p into $head" ];
+      my $r = $git->merge($info, 'FETCH_HEAD');
+      if ($r == 0) {
+        push @log, [ $_[0], "merged %c/%p into $head" ];
+      } else {
+        push @log, [ $_[0], "merge failed, aborting" ];
+        $git->merge($info, '--abort');
+        push @$err, "merge failed: aborting!";
+        print_errors(exit => 128);
+      }
     };
   } elsif (defined $opts->{'cherry-pick'}) {
     $action = sub {

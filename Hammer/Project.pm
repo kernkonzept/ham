@@ -12,7 +12,7 @@ use Hammer::Project::Status;
 package Git::Repository::Plugin::KK {
   use Git::Repository::Plugin;
   our @ISA      = qw( Git::Repository::Plugin );
-  sub _keywords { qw( rev_parse cat_object ) }
+  sub _keywords { qw( rev_parse cat_object merge ) }
 
   sub rev_parse
   {
@@ -30,6 +30,15 @@ package Git::Repository::Plugin::KK {
     # skip the invocant when invoked as a class method
     return undef if !ref $_[0];
     return $_[0]->run('cat-file', '-p', $_[1]);
+  }
+
+  sub merge
+  {
+    my $git = shift;
+    my $output = shift;
+    my $cmd = $git->command('merge', @_);
+    push @$output, $cmd->final_output();
+    return $cmd->exit();
   }
 }
 
