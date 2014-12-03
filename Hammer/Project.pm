@@ -465,7 +465,13 @@ sub check_for_upload
   # skip if there is nothing to do
   return 0 if $src_rev eq $dst_rev;
 
-  my @commits = $r->run('rev-list', '--ancestry-path', "^$dst_rev", $src_rev);
+  my $merge_base = $r->run('merge-base', $dst_rev, $src_rev);
+  if (!$merge_base) {
+    $prj->logerr("$src_br is not derived from $rem_br");
+    return 0;
+  }
+
+  my @commits = $r->run('rev-list', '--ancestry-path', "^$merge_base", $src_rev);
   if (not @commits) {
     $prj->logerr("$src_br is not derived from $rem_br");
     return 0;
