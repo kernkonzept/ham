@@ -1020,7 +1020,9 @@ $commands->add(download => {
 
 sub gerrit_querry_changes
 {
-  my ( $prjs, $branch, $recursion, @change_ids ) = @_;
+  my ( $prjs, $opts, $recursion, @change_ids ) = @_;
+  my $branch = $opts->{branch};
+  my $verbose = $opts->{verbose};
   my %queries = ();
   foreach my $p (values %$prjs) {
     foreach my $chid (@change_ids) {
@@ -1047,6 +1049,7 @@ sub gerrit_querry_changes
   my @changes = ();
 
   foreach my $query (keys %queries) {
+    print STDOUT "query: $query\n" if $verbose;
     my @json = qx($query);
     foreach my $j (@json) {
       my $q = decode_json($j);
@@ -1164,6 +1167,8 @@ $commands->add('download-id' => {
     [ 'branch|b=s',        q|Get the change for the specified branch, usually
                              any matching change will be downloaded as long as
                              there is no ambiguity.|, { arg => '<branch>' } ],
+    [ 'dry-run|n',         q|do not checkout anything| ],
+    [ 'verbose|v',         q|enable verbose mode| ],
   ],
   desc => q|Download all changes for all projects with the given change ID (Change-Id)
             to your local working copy|,
@@ -1179,11 +1184,12 @@ $commands->add('download-id' => {
 
     while (1) {
       my $changes =
-        gerrit_querry_changes($all_prjs, $opts->{branch}, $recurse, keys %new_change_ids);
+        gerrit_querry_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
 
       return 1 unless defined $changes;
       return 0 unless %$changes;
 
+      return 0 if $opts->{'dry-run'};
 
       my $r = fetch_all_changes($changes, %$opts);
       return $r if $r;
