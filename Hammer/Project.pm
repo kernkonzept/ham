@@ -147,6 +147,26 @@ sub loginfo
   push @{$self->{_stdout}}, map { "$self->{path}: $_" } @_;
 }
 
+sub handle_output
+{
+  my ($self, $cmd) = @_;
+
+  my @cerr = $cmd->stderr->getlines;
+  my @cout = $cmd->stdout->getlines;
+  $cmd->close;
+  chomp @cout;
+  chomp @cerr;
+  # log normal output immediately, to see the progress
+  print STDOUT "$self->{name}: $_\n" foreach @cout;
+  # disabled: logging to buffer and delayed output
+  # $self->loginfo(@cout);
+  if ($cmd->exit != 0) {
+    $self->logerr(@cerr);
+  } else {
+    $self->loginfo(@cerr);
+  }
+}
+
 ## do a conditional checkout for sync
 sub sync_checkout
 {
@@ -171,16 +191,7 @@ sub sync_checkout
       }
     } else {
       my $cmd = $self->git->command('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {quiet => 1, fatal => [-128 ]});
-      my @cerr = $cmd->stderr->getlines;
-      my @cout = $cmd->stdout->getlines;
-      foreach my $e (@cerr) {
-        print STDOUT "$self->{path}: $e";
-      }
-      foreach my $e (@cout) {
-        print STDOUT "$self->{path}: $e";
-      }
-      $cmd->exit;
-      #$self->loginfo($self->git->run('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {fatal => [-128 ]}));
+      $self->handle_output($cmd);
 
       return 1;
     }
@@ -193,7 +204,7 @@ sub sync_checkout
       return 1;
     }
 
-    $self->loginfo($git->run('rebase', $remote_ref_n));
+    $self->handle_output($self->git->command('rebase', $remote_ref_n));
     return 1;
   }
 

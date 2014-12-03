@@ -373,11 +373,11 @@ sub print_errors
 
   my $errpfx = defined $opts{no_prefix} ? '' : 'error: ';
   foreach my $e (@$err) {
-    print STDERR "$errpfx$e\n";
+    print STDERR colored("$errpfx$e", 'red') . "\n";
   }
 
   if ($opts{err_msg} and @$err) {
-    print STDERR "$opts{err_msg}\n";
+    print STDERR colored("$opts{err_msg}", 'red') . "\n";
   }
 
   if ($opts{exit} and @$err) {
