@@ -583,7 +583,7 @@ $commands->add(status => {
     foreach_prj {
       my $p = $_;
       my $s = $p->status;
-      return 0 unless $branch_info and $s->is_different or $s->is_dirty;
+      return 0 unless $s and $branch_info and $s->is_different or $s->is_dirty;
       print colored("project: $p->{name}: ".$p->abs_path, 'bold'), "\n";
       if ($branch_info) {
         print "    $s->[0]\n";
