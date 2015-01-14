@@ -27,6 +27,7 @@ use JSON::PP;
 my $prog = 'ham';
 
 my $user_config = File::Spec->catdir($ENV{HOME}, ".hamconfig");
+my %config = ();
 
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
@@ -41,9 +42,11 @@ if (-t STDOUT) {
 
 sub pager
 {
-  if (-t STDOUT and $ENV{PAGER}) {
+  my $pag = $config{core}{pager};
+  $pag = $ENV{PAGER} unless $pag;
+  if (-t STDOUT and $pag) {
     my $out;
-    return $out if open $out, "|$ENV{PAGER}";
+    return $out if open $out, "|$pag";
   }
   return *STDOUT;
 }
@@ -1590,7 +1593,6 @@ $commands->add('add' => {
 
 if (-r $user_config) {
   my @cfg = qx{git config --file $user_config --list};
-  my %config = ();
   foreach (@cfg) {
     if (/^([^=]+)\.([^.]+)=(.*)$/) {
       $config{$1}{$2} = $3;
