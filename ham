@@ -528,7 +528,7 @@ $commands->add(sync => {
     '%c [<project>...]',
     [ 'rebase',   q|rebase the current branch onto the
                     corresponging branch in the projects remote| ],
-    [ 'upstream', q|checkout theupstream revisions as defined in
+    [ 'upstream', q|checkout the upstream revisions as defined in
                     the manifest| ],
   ],
   desc => 'checkout/update all projects'
