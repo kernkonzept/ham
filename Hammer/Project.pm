@@ -181,7 +181,8 @@ sub sync_checkout
       }
       $cmd->exit;
       #$self->loginfo($self->git->run('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {fatal => [-128 ]}));
-      return 0;
+
+      return 1;
     }
 
     my $remote = $self->{_remote}->{name};
