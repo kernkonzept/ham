@@ -1221,7 +1221,7 @@ $commands->add('download-id' => {
 
       if (%new_change_ids) {
         if (not $opts->{'recursive-pull'}) {
-          print "skip doanloading additional required changes from other projects\n";
+          print "skip downloading additional required changes from other projects\n";
           return 0;
         }
         $all_prjs = filter_projects($all_prjs, [ '!', (keys %$changes) ]);
