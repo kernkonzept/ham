@@ -12,7 +12,7 @@ use Hammer::Project::Status;
 package Git::Repository::Plugin::KK {
   use Git::Repository::Plugin;
   our @ISA      = qw( Git::Repository::Plugin );
-  sub _keywords { qw( rev_parse cat_object merge ) }
+  sub _keywords { qw( rev_parse cat_object merge rebase ) }
 
   sub rev_parse
   {
@@ -37,6 +37,15 @@ package Git::Repository::Plugin::KK {
     my $git = shift;
     my $output = shift;
     my $cmd = $git->command('merge', @_);
+    push @$output, $cmd->final_output();
+    return $cmd->exit();
+  }
+
+  sub rebase
+  {
+    my $git = shift;
+    my $output = shift;
+    my $cmd = $git->command('rebase', @_);
     push @$output, $cmd->final_output();
     return $cmd->exit();
   }

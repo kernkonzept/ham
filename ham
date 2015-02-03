@@ -926,18 +926,20 @@ sub fetch_and_co_changes
   my $action;
   my @log;
 
-  if (defined $opts->{pull}) {
+  if (defined $opts->{pull} || defined $opts->{rebase}) {
     $action = sub {
       my $git = $_[0]->git;
       $git->run("checkout", "--detach") if $opts->{detach};
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-      my $r = $git->merge($info, 'FETCH_HEAD');
+      my $op = 'merge' if defined $opts->{pull};
+      $op = 'rebase' if defined $opts->{rebase};
+      my $r = $git->$op($info, 'FETCH_HEAD');
       if ($r == 0) {
-        push @log, [ $_[0], "merged %c/%p into $head" ];
+        push @log, [ $_[0], "${op}d %c/%p into $head" ];
       } else {
-        push @log, [ $_[0], "merge failed, aborting" ];
-        $git->merge($info, '--abort');
-        push @$err, "merge failed: aborting!";
+        push @log, [ $_[0], "$op failed, aborting" ];
+        $git->$op($info, '--abort');
+        push @$err, "$op failed: aborting!";
         print_errors(exit => 128);
       }
     };
@@ -991,6 +993,7 @@ $commands->add(download => {
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
                              instead of checking out the change| ],
     [ 'pull|p',            q|Pull (merge) the change into the current branch|],
+    [ 'rebase',            q|Rebase the current branch onto the change|],
     [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'remote|r=s',        q|Use <remote> as git remote to fetch the change,
                              instead of using the remote configured in the manifest.|,
@@ -1162,6 +1165,7 @@ $commands->add('download-id' => {
     [ 'cherry-pick|cp|c',  q|Cherry pick the change onto the current branch
                              instead of checking out the change| ],
     [ 'pull|p',            q|Pull (merge) the change into the current branch|],
+    [ 'rebase',            q|Rebase the current branch onto the change|],
     [ 'recursive-pull|r',  q|use merge for all the recursively required changes|],
     [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'branch|b=s',        q|Get the change for the specified branch, usually
