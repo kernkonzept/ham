@@ -267,10 +267,12 @@ sub _fetch_progress
   my $self = shift;
   s|\n||gm;
   if ($_ ne '' and $self->{trace_fetch} or $trace) {
-    print STDERR "$_\n";
+    print STDERR "$self->{name}: $_\n";
+    $self->logerr($_);
   } elsif (/^fatal:|^ssh:/) {
     $self->{trace_fetch} = 1;
-    print STDERR "$_\n";
+    print STDERR "$self->{name}: $_\n";
+    $self->logerr($_);
   }
 
   if (/^remote: Finding sources:\s*([0-9]+%).*$/) {
@@ -296,7 +298,10 @@ sub fetch
   return (
     $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 }),
     out => \&_collect, err => \&_fetch_progress, args => $self,
-    finish => sub {"done fetching $self->{name}" }
+    finish => sub {
+      $self->{trace_fetch} = 0;
+      return "done fetching $self->{name}"
+    }
   );
 }
 
