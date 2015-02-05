@@ -470,7 +470,7 @@ sub cmd_init
 
   $repo_dir = $repo_subdir;
   place_commit_msg_hook();
-  if (defined $opt->{url} or (defined $opt->{gerrit} and defined $opt->{project})) {
+  if (defined $opt->{url} or (defined $opt->{'gerrit-url'} and defined $opt->{project})) {
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
     #mkdir($repo_subdir);
@@ -480,13 +480,13 @@ sub cmd_init
       $prj =~ s|^.*/||g;
       $opt->{project} = $prj;
       $url =~ s|^(.*)/[^/]*$|$1|;
-      $opt->{gerrit}  = $url;
+      $opt->{'gerrit-url'}  = $url;
     }
 
     my $manifest_info = {
       project  => $opt->{project},
-      url      => $opt->{gerrit},
-      revision => $opt->{revision}
+      url      => $opt->{'gerrit-url'},
+      revision => $opt->{branch}
     };
 
     $manifest_info->{project} = 'manifest' unless defined $manifest_info->{project};
