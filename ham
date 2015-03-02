@@ -337,7 +337,7 @@ sub load_projects
   }
 
   my $manifest_prj = manifest_prj();
-  my $manifest_url = URI->new($manifest_prj->{url});
+  my $manifest_url = URI->new($manifest_prj->{url}) . "/";
 
   foreach my $r (values %{$manifest->{remote}}) {
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
