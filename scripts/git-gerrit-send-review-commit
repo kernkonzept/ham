@@ -1,0 +1,42 @@
+#! /bin/sh
+# by adam@l4re.org
+
+dashless=$(basename "$0" | sed -e 's/-/ /')
+USAGE="TBD"
+
+SUBDIRECTORY_OK=Yes
+START_DIR=$(pwd)
+
+. /usr/lib/git-core/git-sh-setup
+. /usr/lib/git-core/git-sh-i18n
+
+require_work_tree
+cd_to_toplevel
+toplevel_dir=$(pwd)
+
+. $(dirname $(readlink -f $0))/git-sh-gerrit
+
+local_upstream_hash=$(git rev-parse $sh_gerrit_local_upstream)
+tmpdir=$(mktemp -d)
+
+trap "echo rm -fr $tmpdir; rm -fr $tmpdir" 0 1 2 3 15
+
+email=$(git config user.email)
+git clone -n $toplevel_dir $tmpdir || die "git clone failed"
+cd $tmpdir || die "Cannot change directory to $tmpdir"
+git config user.email $email
+git checkout -b remote_head $local_upstream_hash || die "git checkout failed"
+git checkout -b picked_commits
+
+for commit in "$@"; do
+  echo "Picking $commit"
+  git cherry-pick $commit || exit 1
+done
+
+echo
+echo "Commits to be pushed:"
+git log --oneline remote_head..picked_commits
+echo "on"
+git log --oneline remote_head^..remote_head
+set -x
+git push -v $sh_gerrit_repo_url picked_commits:refs/for/$sh_gerrit_branch_remote

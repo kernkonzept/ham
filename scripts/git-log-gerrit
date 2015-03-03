@@ -1,0 +1,66 @@
+#! /bin/bash
+# by adam@l4re.org
+# Embedd this in log's --pretty option: %Z([%Zn/%Zs]%Z)
+
+dashless=$(basename "$0" | sed -e 's/-/ /')
+USAGE="TBD"
+
+SUBDIRECTORY_OK=Yes
+START_DIR=$(pwd)
+
+. /usr/lib/git-core/git-sh-setup
+. /usr/lib/git-core/git-sh-i18n
+
+require_work_tree
+cd_to_toplevel
+
+. $(dirname $(readlink -f $0))/git-sh-gerrit
+
+otheropts=
+while test $# != 0
+do
+  case "$1" in
+    --pretty=*)
+      logprettyopt=$1
+      shift
+      ;;
+    *) otheropts="$otheropts $1"
+        shift
+      ;;
+  esac
+done
+
+
+for h in $(git rev-list ${sh_gerrit_local_upstream}..); do
+  t=$(git show -s $h)
+  id=${t#*Change-Id: }
+  unset stat
+  unset number
+  if [ "$t" != "$id" ]; then
+    id=${id%% *}
+    query=$(ssh $sh_gerrit_ssh_host gerrit query --format=json change:$id)
+    if [ "$?" != 0 ]; then
+      echo "Calling gerrit server failed. Stopping."
+      exit 1
+    fi
+    #echo $query
+    number=${query#*\"number\":\"}
+    if [ "$number" != "$query" ]; then
+      number=${number%%\"*}
+      stat=${query#*\"status\":\"}
+      stat=${stat%%\"*}
+    else
+      unset number
+    fi
+  fi
+  l=$logprettyopt
+  if [ -n "$number" ]; then
+    l=${l/\%Z(}
+    l=${l/\%Z)}
+    l=${l/\%Zn/$number}
+    l=${l/\%Zs/$stat}
+  else
+    l=${l/\%Z(*%Z)}
+  fi
+  git log $otheropts "$l" $h^..$h
+done
