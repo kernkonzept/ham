@@ -1091,7 +1091,11 @@ sub gerrit_querry_changes
 
   # FIXME: need to have a version to use the revision defined in the manifest
   # as branch name for each project
-  @used_changes = grep { $_->{branch} eq $branch } @used_changes if defined $branch;
+  if (defined $branch && $branch eq 'MANIFEST') {
+    @used_changes = grep { $_->{branch} eq $prjs->{$_->{project}}{revision} } @used_changes;
+  } elsif (defined $branch) {
+    @used_changes = grep { $_->{branch} eq $branch } @used_changes;
+  }
 
   if (not @used_changes) {
     return {} if $recursion;
