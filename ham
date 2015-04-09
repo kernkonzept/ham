@@ -1438,7 +1438,7 @@ $commands->add('commit' => {
     [ 'file|F=s',           'File containing the commit message', { arg => '<msg-file>' } ]
   ],
   desc => qq|Create a single commit across multiple projects. The commit
-             will get the same commit message and more importent the same
+             will get the same commit message and more important the same
              change ID.|,
   cmd => sub {
     my ($opts, $command, $cmd) = @_;
