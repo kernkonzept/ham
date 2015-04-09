@@ -262,7 +262,7 @@ sub manifest_prj
     }
   else
     {
-      print STDERR "no manifest_json foudn, trying old format manifest_url\n";
+      print STDERR "no manifest_json found, trying old format manifest_url\n";
       # old manifest_url file conversion
 
       open my $mf, "<".get_repo_dir().'/manifests_url' or die "no manifest URL found";
@@ -337,7 +337,7 @@ sub load_projects
   }
 
   my $manifest_prj = manifest_prj();
-  my $manifest_url = URI->new($manifest_prj->{url}) . "/";
+  my $manifest_url = URI->new($manifest_prj->{url} . '/' . $manifest_prj->{name} . '/');
 
   foreach my $r (values %{$manifest->{remote}}) {
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
@@ -482,6 +482,8 @@ sub cmd_init
       $url =~ s|^(.*)/[^/]*$|$1|;
       $opt->{'gerrit-url'}  = $url;
     }
+
+    $opt->{'gerrit-url'} =~ s,/*$,,;
 
     my $manifest_info = {
       project  => $opt->{project},
