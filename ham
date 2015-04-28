@@ -650,7 +650,9 @@ sub cmd_forall
     my @argv = @ARGV;
     if ($opt->{vars}) {
       my $upstream = "refs/remotes/$r->{_remote}->{name}/$r->{revision}";
+      my $remote_name = $r->{_remote}->{name};
       s,\{UPSTREAM\},$upstream,g foreach @argv;
+      s,\{REMOTE\},$remote_name,g foreach @argv;
     }
     my $res = system(@argv);
     return ($res) if $res and $opt->{'abort-on-errors'};
