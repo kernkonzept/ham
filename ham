@@ -1219,7 +1219,7 @@ $commands->add('download-id' => {
                                 '--');
         chomp (@revs);
 
-        if (not $recurse) {
+        if (scalar @revs && defined $revs[0] && (not $recurse)) {
           print "downloaded change HEAD: $prj_name: $revs[0]\n";
         }
 
