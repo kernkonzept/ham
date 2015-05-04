@@ -84,7 +84,7 @@ sub ham_dir_rel
 ## test if the work tree diretory exists
 sub exists { return -e $_[0]->abs_path; }
 
-## check forthe existence of the '.git' directory
+## check for the existence of the '.git' directory
 sub is_git_repo { return -e $_[0]->abs_path.'/.git'; }
 
 ## get the Git::Repository object for this project (incl. a work tree)
