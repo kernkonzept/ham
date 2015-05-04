@@ -1,6 +1,9 @@
 #! /bin/sh
 
-sh_gerrit_local_upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
+if [ -z "$sh_gerrit_local_upstream" ]; then
+  sh_gerrit_local_upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
+fi
+
 sh_gerrit_origin_name=${sh_gerrit_local_upstream%%/*}
 sh_gerrit_branch_remote=${sh_gerrit_local_upstream#$sh_gerrit_origin_name/}
 
@@ -17,7 +20,7 @@ sh_gerrit_ssh_host=${sh_gerrit_tmp%%/*}
 
 unset sh_gerrit_tmp
 
-if [ "" ]; then
+if [ -n "" ]; then
   echo sh_gerrit_local_upstream=$sh_gerrit_local_upstream
   echo sh_gerrit_origin_name=$sh_gerrit_origin_name
   echo sh_gerrit_branch_remote=$sh_gerrit_branch_remote

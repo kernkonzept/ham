@@ -14,6 +14,14 @@ require_work_tree
 cd_to_toplevel
 toplevel_dir=$(pwd)
 
+case "$1" in
+  -u)
+     shift
+     sh_gerrit_local_upstream=$1
+     shift
+     ;;
+esac
+
 . $(dirname $(readlink -f $0))/git-sh-gerrit
 
 local_upstream_hash=$(git rev-parse $sh_gerrit_local_upstream)
