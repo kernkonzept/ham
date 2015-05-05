@@ -251,7 +251,8 @@ sub prepare
   my $git = $self->bare_git;
   if (defined $self->{_remote}->{review} and $self->{_remote}->{review} ne '') {
     my $hooks = $git->git_dir.'/hooks';
-    if (not -e "$hooks/commit-msg") {
+    my $hook_path = catfile($hooks, "commit-msg");
+    if (not -e $hook_path) {
       make_path($hooks) unless -d $hooks;
       my $base = $self->{_root};
       if (index($hooks, $base) != 0) {
@@ -261,7 +262,8 @@ sub prepare
 
       my $rel_hooks = $self->ham_dir_rel(substr($hooks, length($base)),
                                          '.ham/hooks/commit-msg');
-      symlink($rel_hooks, "$hooks/commit-msg")
+      unlink $hook_path if -l $hook_path && (not -e $hook_path);
+      symlink($rel_hooks, $hook_path)
         or $self->logerr("fatal: link $hooks/commit-msg: $!");
     }
 
