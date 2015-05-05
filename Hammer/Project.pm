@@ -3,7 +3,8 @@ package Hammer::Project;
 use strict;
 use warnings;
 
-use File::Spec::Functions qw(catdir splitdir);
+use File::Spec::Functions qw(catdir catfile splitdir);
+use File::Path qw(make_path);
 use Git::Repository;
 use Hammer::Project::Status;
 
@@ -84,8 +85,11 @@ sub ham_dir_rel
 ## test if the work tree diretory exists
 sub exists { return -e $_[0]->abs_path; }
 
+## get the .git directory for this project
+sub gitdir { return catdir($_[0]->abs_path, '.git'); }
+
 ## check for the existence of the '.git' directory
-sub is_git_repo { return -e $_[0]->abs_path.'/.git'; }
+sub is_git_repo { return -e $_[0]->gitdir; }
 
 ## get the Git::Repository object for this project (incl. a work tree)
 sub git
@@ -101,7 +105,7 @@ sub git
   }
 
   my $r = $self->{_bare_repo} = $self->{_repo}
-        = Git::Repository->new(git_dir => $self->abs_path.'/.git',
+        = Git::Repository->new(git_dir => $self->gitdir,
                                work_tree => $self->abs_path,
                                { env => { LC_ALL => 'C' } });
   if (not defined $r and defined $err) {
@@ -124,7 +128,7 @@ sub bare_git
     return undef;
   }
 
-  my $r = $self->{_bare_repo} = Git::Repository->new(git_dir => $self->abs_path.'/.git',
+  my $r = $self->{_bare_repo} = Git::Repository->new(git_dir => $self->gitdir,
                                                      { env => { LC_ALL => 'C' } });
    if (not defined $r and defined $err) {
     push @$err, "$self->{path} is not a valid git repository";
@@ -361,7 +365,7 @@ sub sync
   my $self = shift;
   my $remote_name = $self->{_remote}->{name};
   my $r;
-  ::make_path($self->abs_path) unless $self->exists;
+  make_path($self->abs_path) unless $self->exists;
   if ($self->is_git_repo) {
     $r = $self->bare_git;
     #print STDERR "fetch $self->{name} from $remote_name\n";
