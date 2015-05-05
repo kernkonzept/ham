@@ -359,7 +359,8 @@ sub sync_checkout
     return 0;
   }
 
-  $self->checkout('-b', $revision, '--track', $remote_name.'/'.$revision);
+  #$self->checkout('-b', $revision, '--track', $remote_name.'/'.$revision);
+  $self->checkout($revision);
   return 1;
 }
 
