@@ -265,6 +265,7 @@ sub make_manifest_prj
     url      => $opts{url},
     revision => $opts{revision},
     is_manifest => 1,
+    keep => 1,
   };
   my $r = $opts{root};
   $r = repo_base() unless $r;
@@ -294,6 +295,29 @@ sub write_ham_json_file
   open my $f, ">$n" or die "cannot open '$n'";
   print $f encode_json($j), "\n";
   close $f;
+}
+
+# get the list of downloaded projects
+# (usually during last sync)
+sub get_downloaded_projects
+{
+  my $p = read_ham_json_file('projects_list');
+  return $p if ref $p eq 'ARRAY';
+  return [];
+}
+
+# write the list of currently downloaded projects
+# within the working copy (written during sync)
+sub write_downloaded_projects
+{
+  my $projects = shift;
+  my $prjs = [];
+  foreach my $p (values %$projects) {
+    next if $p->{is_manifest};
+    next if $p->{keep};
+    push @$prjs, { name => $p->{name}, path => $p->{path} };
+  }
+  write_ham_json_file($prjs, 'projects_list');
 }
 
 # load the manifest infos from .ham/manifests_json and create a project
@@ -384,6 +408,35 @@ sub load_projects
   }
   $projects->{$manifest_prj->{name}} = $manifest_prj;
   return $projects;
+}
+
+sub cleanup_stale_projects
+{
+  my ($projects, $move_to_attic) = @_;
+  my $stale_p = get_downloaded_projects();
+  my %all_prjs = ( %$projects );
+  foreach my $sp (@$stale_p) {
+    my $n = $sp->{name};
+    my $p = $projects->{$n};
+    if ((not $p) and $move_to_attic) {
+      my $x = Hammer::Project->new($sp, root => repo_base(), stderr => $err, stdout => $info);
+      print_errors(exit => 1) unless $x->store_to_attic;
+      next;
+    }
+
+    if (not $p) {
+      $all_prjs{$n} = $sp;
+      push @$info, "leave stale project behind: ".$n." @ ".$sp->{path};
+    } elsif ($sp->{path} ne $p->{path}) {
+      push @$info, $n.": moved to new location: ".$sp->{path}." -> ".$p->{path};
+      $p->migrate_from($sp->{path})
+        or die "error: could not migrate project: ".$n;
+      $all_prjs{$n} = $p;
+    }
+  }
+
+  print_errors(exit => 1);
+  write_downloaded_projects(\%all_prjs);
 }
 
 ##########################################################################
@@ -569,6 +622,10 @@ $commands->add(sync => {
                     corresponging branch in the projects remote| ],
     [ 'upstream', q|checkout the upstream revisions as defined in
                     the manifest| ],
+    [ 'cleanup',  q|cleanup moved and stale projects. Using this option
+                    will move projects no longer in the manifest into an
+                    'attic' directory. NOTE: these repos may be restored
+                    on a later sync automatically.| ],
   ],
   desc => 'checkout/update all projects'
 });
@@ -584,7 +641,10 @@ sub cmd_sync
 
   place_commit_msg_hook();
 
-  my $projects = sorted_and_filtered_projects(\@ARGV);
+  my $projects = load_projects();
+  cleanup_stale_projects($projects, $opts->{cleanup});
+  $projects = filter_projects($projects, \@ARGV);
+  $projects = [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 
   foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
   $q->work;

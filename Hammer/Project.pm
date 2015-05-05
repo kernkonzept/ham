@@ -3,7 +3,9 @@ package Hammer::Project;
 use strict;
 use warnings;
 
+use Carp;
 use File::Spec::Functions qw(catdir catfile splitdir);
+use File::Copy;
 use File::Path qw(make_path);
 use Git::Repository;
 use Hammer::Project::Status;
@@ -72,6 +74,24 @@ sub abs_path
   return catdir($base, $self->{path});
 }
 
+#
+# get the '.ham' directory for the project
+#
+sub ham_dir
+{ return catdir($_[0]->{_root}, '.ham'); }
+
+#
+# get the attic base path for this project
+#
+sub attic_base_path
+{ return catdir($_[0]->ham_dir, 'attic'); }
+
+#
+# get the project specific attic dir
+#
+sub attic_path
+{ return catdir($_[0]->attic_base_path, $_[0]->{name} . '.git'); }
+
 sub ham_dir_rel
 {
   my ($self, $sub, $dir) = @_;
@@ -138,6 +158,104 @@ sub bare_git
   return $r;
 }
 
+#
+# move a project git repo to the attic directory
+#
+# The project will only be moved to attic if it has a clean
+# working tree, the function will fail otherwise.
+#
+# NOTE: the working tree will be deleted
+#
+sub store_to_attic
+{
+  my $self = shift;
+  return undef if not $self->is_git_repo;
+  my $s = $self->status;
+  if ($s->is_dirty) {
+    $self->logerr("contains changes, not moving to attic");
+    return 0;
+  }
+
+  my $attic_base = $self->attic_base_path;
+  make_path($attic_base);
+
+  my $base = $self->abs_path;
+  my $git = $self->git($self->{_stderr});
+  my @files = map { catdir($base, $_); } split("\0", $git->run('ls-files', '-z'));
+  my @dirs = map { catdir($base, $_); }
+             sort { $b cmp $a }
+             split("\0", $git->run('ls-tree', '-d', '--name-only', '-z', '-r', 'HEAD'));
+  push @dirs, $base;
+  $self->loginfo("moving to attic: ".$self->attic_path);
+  return 0 unless File::Copy::move($self->gitdir, $self->attic_path);
+  unlink(@files);
+  foreach my $i (@dirs) { rmdir($i); }
+  return 1;
+}
+
+#
+# restore a project from its git repo in the attic directory
+#
+sub restore_from_attic
+{
+  my $self = shift;
+  die "internal error: trying to overwrite .git in working copy: ".$self->girdir if $self->is_git_repo;
+  return 0 if not -d $self->attic_path;
+  make_path($self->abs_path);
+  return File::Copy::move($self->attic_path, $self->gitdir);
+}
+
+#
+# migrate project (git repo and working copy) to its new location
+#
+# the new location is $self->{path} and the old location relative to
+# $self->{_root} must be given as argument.
+#
+sub migrate_from
+{
+  my ($self, $old_path) = @_;
+  my $old = catdir($self->{_root}, $old_path);
+  my $new = $self->abs_path;
+  my $n = $self->{name};
+
+  croak "error: source and destination path are equal $old\n"
+    if $new eq $old;
+
+  die "error: cannot move $n, source directory does not exist: $old"
+    unless -d $old;
+
+  die "error: cannot move $n, destination already exists: $new"
+    if -e $new;
+
+  my @new_p = splitdir($new);
+  die "error: $n: empty target path"
+    unless scalar @new_p;
+
+  # make base path for new location
+  my $d = catdir(@new_p[0..$#new_p-1]);
+  make_path($d);
+
+  # move to new location
+  unless (File::Copy::move($old, $new)) {
+    # do cleanup, remove all possibly created empty directories
+    my @n = splitdir($self->{path});
+    while (scalar @n) {
+      rmdir catdir($self->{_root}, @n);
+      pop @n;
+    }
+    die "error: could not move $n from $old to $new: $!";
+  }
+
+  # remove old empty directories
+  my @old_p = splitdir($old_path);
+  while (scalar @old_p) {
+    rmdir catdir($self->{_root}, @old_p);
+    pop @old_p;
+  }
+
+  return 1;
+}
+
 
 ## initialize the project work tree (.git)
 sub init
@@ -190,8 +308,10 @@ sub sync_checkout
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
 
   # return if we have already a valid checkout, don't touch the working copy
-  if (defined $head) {
-
+  if (defined $self->{need_checkout}) {
+    delete $self->{need_checkout};
+    $self->checkout('--force', $self->{revision}.'^{tree}', '--', '.');
+  } elsif (defined $head) {
     if ($opts->{rebase}) {
       if ($head ne $self->{revision}) {
         if (defined $opts->{upstream}) {
@@ -334,11 +454,13 @@ sub checkout
     return 128;
   }
 
+  push @args, '--' unless grep /^--$/, @args;
+
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
   return if defined $head and $head eq $$branch;
   $head = '' unless defined $head;
 
-  my $cmd = $git->command('checkout', @args, '--', {fatal => [-128], quiet => 1});
+  my $cmd = $git->command('checkout', @args, {fatal => [-128], quiet => 1});
   my @cerr = $cmd->stderr->getlines;
 
   if (grep /invalid reference: $$branch/, @cerr) {
@@ -371,6 +493,9 @@ sub sync
   if ($self->is_git_repo) {
     $r = $self->bare_git;
     #print STDERR "fetch $self->{name} from $remote_name\n";
+    return $self->fetch($remote_name);
+  } elsif ($self->restore_from_attic) {
+    $self->{need_checkout} = 1;
     return $self->fetch($remote_name);
   } else {
     #print "run: ($self->{path}) git clone $remote_name\n";
