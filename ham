@@ -1192,7 +1192,9 @@ sub gerrit_querry_changes
 
   # FIXME: need to have a version to use the revision defined in the manifest
   # as branch name for each project
-  if (defined $branch && $branch eq 'MANIFEST') {
+  if (defined $branch && $branch eq 'CURRENT') {
+    @used_changes = grep { $_->{branch} eq $prjs->{$_->{project}}{current_head} } @used_changes;
+  } elsif (defined $branch && $branch eq 'MANIFEST') {
     @used_changes = grep { $_->{branch} eq $prjs->{$_->{project}}{revision} } @used_changes;
   } elsif (defined $branch) {
     @used_changes = grep { $_->{branch} eq $branch } @used_changes;
@@ -1290,6 +1292,11 @@ $commands->add('download-id' => {
     my %new_change_ids = ( $change_id => 1 );
     my %done_change_ids = ();
     my $recurse = 0;
+
+    foreach my $p (values %$all_prjs) {
+      my $head = $p->git->rev_parse('--abbrev-ref', 'HEAD');
+      $p->{current_head} = $head;
+    }
 
     while (1) {
       my $changes =
