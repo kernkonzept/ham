@@ -415,7 +415,7 @@ sub cleanup_stale_projects
   my ($projects, $move_to_attic) = @_;
   my $stale_p = get_downloaded_projects();
   my %all_prjs = ( %$projects );
-  foreach my $sp (@$stale_p) {
+  foreach my $sp (sort { $b->{path} cmp $a->{path} } @$stale_p) {
     my $n = $sp->{name};
     my $p = $projects->{$n};
     if ((not $p) and $move_to_attic) {
