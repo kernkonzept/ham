@@ -15,7 +15,7 @@ use Hammer::Project::Status;
 package Git::Repository::Plugin::KK {
   use Git::Repository::Plugin;
   our @ISA      = qw( Git::Repository::Plugin );
-  sub _keywords { qw( rev_parse cat_object merge rebase ) }
+  sub _keywords { qw( rev_parse config config_set cat_object merge rebase ) }
 
   sub rev_parse
   {
@@ -51,6 +51,26 @@ package Git::Repository::Plugin::KK {
     my $cmd = $git->command('rebase', @_);
     push @$output, $cmd->final_output();
     return $cmd->exit();
+  }
+
+  sub config
+  {
+    my ($git, $var, $type) = @_;
+    my @g = ('--get');
+    @g = ('--get-all') if wantarray;
+    push @g, "--$type" if defined $type;
+    my @r = $git->run('config', @g, $var);
+    return undef if ($? >> 8) == 1;
+    return $r[0] unless wantarray;
+    return (@r);
+  }
+
+  sub config_set
+  {
+    my ($git, $var, $value, $type) = @_;
+    my @cmd = ('config');
+    push @cmd, "--$type" if defined $type;
+    $git->run(@cmd, $var, $value);
   }
 }
 
@@ -484,6 +504,54 @@ sub checkout
   return $cmd->exit;
 }
 
+## get the URL used as fetch URL for this project
+sub get_fetch_url
+{
+  my $self = shift;
+  my $url = $self->{_remote}->{fetch};
+
+  my($scheme, $authority, $path, $query, $fragment) =
+    $url =~ m|(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?|;
+
+  $path = "" unless defined $path;
+  $query = "" unless defined $query;
+  $fragment = "" unless defined $fragment;
+
+  return "$scheme://$authority$path/$self->{name}$query$fragment";
+}
+
+sub hamify_repo
+{
+  my $self = shift;
+  croak "error: $self->{path} is not a git repository"
+    unless $self->is_git_repo;
+
+  my $git = $self->git;
+  my $ham_remote = $git->config('ham.remote');
+  my $ham_prj_name = $git->config('ham.project');
+  my $remote_name = $self->{_remote}->{name};
+  if (defined $ham_remote) {
+    if ($ham_remote eq $remote_name) {
+      $git->run(remote => 'set-url', $remote_name, $self->get_fetch_url);
+      return 1;
+    }
+
+    $git->run(remote => 'remove', $ham_remote);
+  }
+
+  my $old_url = $git->config("remote.$remote_name.url");
+  if (not defined $old_url) {
+    $git->run(remote => 'add', $remote_name, $self->get_fetch_url);
+  } elsif ($old_url ne $self->get_fetch_url) {
+    $self->logerr("remote $remote_name already exists");
+    $self->logerr("  current URL: $old_url");
+    $self->logerr("  new URL:     ".$self->get_fetch_url);
+    return 0;
+  }
+  $git->config_set('ham.remote', $remote_name);
+  return 1;
+}
+
 ## sync #############################################
 sub sync
 {
@@ -494,26 +562,16 @@ sub sync
   if ($self->is_git_repo) {
     $r = $self->bare_git;
     #print STDERR "fetch $self->{name} from $remote_name\n";
+    $self->hamify_repo;
     return $self->fetch($remote_name);
   } elsif ($self->restore_from_attic) {
     $self->{need_checkout} = 1;
+    $self->hamify_repo;
     return $self->fetch($remote_name);
   } else {
     #print "run: ($self->{path}) git clone $remote_name\n";
-    my $url = $self->{_remote}->{fetch};
-
-    my($scheme, $authority, $path, $query, $fragment) =
-      $url =~ m|(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?|;
-
-    $path = "" unless defined $path;
-    $query = "" unless defined $query;
-    $fragment = "" unless defined $fragment;
-
-    if ($self->{name} ne '') {
-      $url = "$scheme://$authority$path/$self->{name}$query$fragment";
-    }
     $r = $self->init;
-    $r->run('remote', 'add', $remote_name, $url);
+    $self->hamify_repo;
     return $self->fetch($remote_name);
   }
 }
