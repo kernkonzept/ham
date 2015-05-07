@@ -666,7 +666,13 @@ $commands->add(status => {
     [ 'short|s',     'generate output in git short mode' ],
     [ 'branch|b',    'show branch information event in short mode' ],
     [ 'porcelain', q|generate output in short mode and with
-                     branch infos and without any colors|]
+                     branch infos and without any colors| ],
+    [ 'only-different', q|show only projects that have a divergent branch
+                          status| ],
+    [ 'only-dirty',     q|show only projects with a dirty working tree| ],
+    [ 'only-behind',    q|show only projects that are behind upstream| ],
+    [ 'only-ahead',     q|show only projects that have commits ahead of
+                          upstream| ]
   ],
   desc => 'show the status of all projects',
   cmd  => sub {
@@ -686,6 +692,11 @@ $commands->add(status => {
       my $p = $_;
       my $s = $p->status;
       return 0 unless $s and $branch_info and ($s->is_different or $s->is_dirty);
+      return 0 if $opts->{'only-different'} and not $s->is_different;
+      return 0 if $opts->{'only-dirty'} and not $s->is_dirty;
+      return 0 if $opts->{'only-ahead'} and not $s->is_ahead;
+      return 0 if $opts->{'only-behind'} and not $s->is_behind;
+
       print colored("project: $p->{name}: ".$p->abs_path, 'bold'), "\n";
       if ($branch_info) {
         print "    $s->[0]\n";

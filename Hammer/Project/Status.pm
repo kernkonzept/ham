@@ -30,7 +30,17 @@ my %what = (
 sub is_different
 {
   my $self = shift;
-  return $self->[0] =~ /##.*(ahead|behind)/;
+  return $self->[0] =~ /##.*(?:\[ahead|\[behind)/;
+}
+
+sub is_ahead
+{
+  return $_[0]->[0] =~ /##.*\[.*(?:ahead).*\]/;
+}
+
+sub is_behind
+{
+  return $_[0]->[0] =~ /##.*\[.*(?:behind).*\]/;
 }
 
 sub is_dirty      { scalar(@{$_[0]}) > 1; }
