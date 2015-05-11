@@ -626,6 +626,13 @@ $commands->add(sync => {
                     will move projects no longer in the manifest into an
                     'attic' directory. NOTE: these repos may be restored
                     on a later sync automatically.| ],
+    [ 'reference=s', q|Use given directory base path of another local project
+                       repository as a reference to save disk and network
+                       bandwidth.
+                       ATTENTION: This creates symbolic references into the
+                       given ham repository, using 'git gc' or removing the
+                       referenced repositories or parts of it might render
+                       the local repositories unusable. | ],
   ],
   desc => 'checkout/update all projects'
 });
@@ -636,7 +643,7 @@ sub cmd_sync
   # update manifest repo, if there is any
   my $manifest = manifest_prj();
   my $q = Hammer::Process_queue->new();
-  $q->queue(sub { $manifest->sync; });
+  $q->queue(sub { $manifest->sync($opts); });
   $q->work;
 
   place_commit_msg_hook();
@@ -646,7 +653,9 @@ sub cmd_sync
   $projects = filter_projects($projects, \@ARGV);
   $projects = [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 
-  foreach my $r (@$projects) { $q->queue(sub { $r->sync; }); }
+  foreach my $r (@$projects) {
+    $q->queue(sub { $r->sync($opts); });
+  }
   $q->work;
 
   print_errors(exit => 128);

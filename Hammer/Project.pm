@@ -520,6 +520,41 @@ sub get_fetch_url
   return "$scheme://$authority$path/$self->{name}$query$fragment";
 }
 
+sub add_to_alternates
+{
+  my ($self, $reference_basepath) = @_;
+
+  croak("no path argument given") unless defined $reference_basepath;
+
+  my $ref = catdir($reference_basepath, $self->{path}, '.git', 'objects');
+  unless (-d $ref) {
+    $self->loginfo("referenced directoy '$ref' does not exist, ignoring");
+    return 0;
+  }
+
+  my $info_dir = catdir($self->gitdir, 'objects', 'info');
+  make_path($info_dir);
+  my $alternates_file = catfile($info_dir, 'alternates');
+
+  my $A;
+  if (open($A, $alternates_file)) {
+    if (grep { chomp; $_ eq $ref } (<$A>)) {
+      close $A;
+      return 1;
+    }
+    close $A;
+  }
+
+  unless (open($A, ">>$alternates_file")) {
+    $self->logerr("cannot open $alternates_file: $!");
+    return 0;
+  }
+
+  print $A "$ref\n";
+  close $A;
+  return 1;
+}
+
 sub hamify_repo
 {
   my $self = shift;
@@ -555,25 +590,23 @@ sub hamify_repo
 ## sync #############################################
 sub sync
 {
-  my $self = shift;
+  my ($self, $opts) = @_;
   my $remote_name = $self->{_remote}->{name};
   my $r;
   make_path($self->abs_path) unless $self->exists;
   if ($self->is_git_repo) {
     $r = $self->bare_git;
     #print STDERR "fetch $self->{name} from $remote_name\n";
-    $self->hamify_repo;
-    return $self->fetch($remote_name);
   } elsif ($self->restore_from_attic) {
     $self->{need_checkout} = 1;
-    $self->hamify_repo;
-    return $self->fetch($remote_name);
   } else {
     #print "run: ($self->{path}) git clone $remote_name\n";
     $r = $self->init;
-    $self->hamify_repo;
-    return $self->fetch($remote_name);
   }
+
+  $self->hamify_repo;
+  $self->add_to_alternates($opts->{reference}) if defined $opts->{reference};
+  return $self->fetch($remote_name);
 }
 
 
