@@ -51,8 +51,13 @@ git checkout -b remote_head $local_upstream_hash || die "git checkout failed"
 git checkout -b picked_commits
 
 for commit in "$@"; do
-  echo "Picking $commit"
-  git cherry-pick $commit || exit 1
+  if [ -e "$commit" ]; then
+    echo "Applying $commit"
+    git am "$commit" || exit 1
+  else
+    echo "Picking $commit"
+    git cherry-pick $commit || exit 1
+  fi
 done
 
 echo
