@@ -1142,7 +1142,7 @@ $commands->add(download => {
   }
 });
 
-sub gerrit_querry_changes
+sub gerrit_query_changes
 {
   my ( $prjs, $opts, $recursion, @change_ids ) = @_;
   my $branch = $opts->{branch};
@@ -1320,7 +1320,7 @@ $commands->add('download-id' => {
 
     while (1) {
       my $changes =
-        gerrit_querry_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
+        gerrit_query_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
 
       return 1 unless defined $changes;
       return 0 unless %$changes;
