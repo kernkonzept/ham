@@ -16,12 +16,12 @@ toplevel_dir=$(pwd)
 
 while true; do
   case "$1" in
-    -u)
+    -u|--upstream)
        shift
        sh_gerrit_local_upstream=$1
        shift
        ;;
-    -r)
+    -r|--reviewer)
        shift
        if [ -z "$reviewer" ]; then
          reviewer=%r=$1
