@@ -30,9 +30,14 @@ while true; do
        fi
        shift
        ;;
-     *)
-       break
+    --addrepo)
+       shift
+       additional_repos="$additional_repos $1"
+       shift
        ;;
+    *)
+      break
+      ;;
   esac
 done
 
@@ -47,6 +52,11 @@ email=$(git config user.email)
 git clone -n $toplevel_dir $tmpdir || die "git clone failed"
 cd $tmpdir || die "Cannot change directory to $tmpdir"
 git config user.email $email
+reponr=1
+for r in $additional_repos; do
+  git remote add -f add_repo_$reponr $r
+  reponr=$((reponr + 1))
+done
 git checkout -b remote_head $local_upstream_hash || die "git checkout failed"
 git checkout -b picked_commits
 
