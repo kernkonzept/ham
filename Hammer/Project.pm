@@ -448,9 +448,35 @@ sub _collect
   push @{$self->{output}}, $_;
 }
 
+my %checked_ssh_db;
+
+sub check_ssh
+{
+  # Check that ssh is working ok. This is a bit of a workaround currently as
+  # the ssh connection is too deep hidden under the already abstracted git
+  # access herein.
+  # SSH non-working reasons can be: missing ssh-key and ssh asking for
+  # typing in the passphrase; new public host key requesting to answer with
+  # yes/no, i.e. it requires interaction with the user
+
+  my ($baseurl, $projname) = @_;
+
+  return if defined $checked_ssh_db{$baseurl};
+  return unless $baseurl =~ /^(git\+)?ssh\:\/\//;
+
+  $checked_ssh_db{$baseurl} = 1;
+
+  system("git ls-remote $baseurl/$projname > /dev/null");
+  if ($?) {
+    print "ham: ssh returned with error with '$baseurl/$projname'\n";
+    exit 1;
+  }
+}
+
 sub fetch
 {
   my $self = shift;
+  check_ssh($self->{_remote}->{fetch}, $self->{name});
   return (
     $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 }),
     out => \&_collect, err => \&_fetch_progress, args => $self,
