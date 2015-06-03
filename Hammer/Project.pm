@@ -409,6 +409,10 @@ sub prepare
     }
 
     $git->run(config => '--bool', 'gerrit.createChangeId', 'true');
+    $git->run(config => '--bool',
+              'remote.'.$self->{_remote}->{name}.'.ham', 'true');
+    $git->run(config => '--replace-all',
+              'ham.'.$self->{_remote}->{name}.'.revision', $self->{revision});
   } else {
     $git->run(config => '--bool', 'gerrit.createChangeId', 'false');
   }
