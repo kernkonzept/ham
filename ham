@@ -538,51 +538,76 @@ $commands->add(init => {
   desc => "initialize $prog meta project in the curent directory"
 });
 
+
+sub split_manifest_url
+{
+  my $opt = shift;
+
+  my $manifest_info = { };
+
+  if (defined $opt->{url}) {
+    ($manifest_info->{project} = $opt->{url}) =~ s|^.*/||g;
+    ($manifest_info->{url} = $opt->{url})     =~ s|^(.*)/[^/]*$|$1|;
+  } elsif (defined $opt->{'gerrit-url'} and defined $opt->{project}) {
+    $manifest_info->{project} = $opt->{project};
+    ($manifest_info->{url} = $opt->{'gerrit-url'}) =~ s,/*$,,;
+  }
+
+  $manifest_info->{revision} = $opt->{branch} if defined $opt->{branch};
+  $manifest_info->{revision} = 'master' unless defined $opt->{branch};
+
+  return $manifest_info;
+}
+
 sub cmd_init
 {
   my ($opt, $command, $cmd) = @_;
   my $repo_dat_src = $opt->{file};
   my $repodir = get_repo_dir(1);
+
+  my $manifest_info = split_manifest_url($opt);
+
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_url')) {
     open my $mf, "<".get_repo_dir().'/manifests_url' or die "cannot open manifest_url file: $!";
     my $manifest_url = <$mf>;
     close $mf;
     chomp $manifest_url;
-    my $new_url = $opt->{url};
-    die "fatal: reinitializing ham directory without URL" if not defined $new_url;
-    die "fatal: ham directory already initialized for different URL $manifest_url" if $manifest_url ne $new_url;
+    my $i = split_manifest_url({ url => $manifest_url, branch => $opt->{branch} });
+    die "fatal: reinitializing ham directory without URL"
+      if not defined $manifest_info->{url};
+
+    die "fatal: ham directory already initialized for different URL $manifest_url"
+      if ($manifest_info->{url} ne $i->{url}
+          or $manifest_info->{project} ne $i->{project});
+
     print STDERR "warning: ham directory already initialized\n";
     return 0;
-  } elsif (defined $repodir) {
+  }
+
+  if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
+    my $i = read_ham_json_file('manifests_json');
+    die "fatal: half initialized ham directory" if not defined $i;
+    die "fatal: ham directory already initialized for different URL $i->{url}"
+      if ($manifest_info->{url} ne $i->{url}
+          or $manifest_info->{project} ne $i->{project});
+    print STDERR "warning: ham directory already initialized\n";
+    return 0;
+  }
+
+  if (defined $repodir) {
     print STDERR "fatal: half initialized ham directory, please cleanup\n";
     exit(128);
   }
 
   $repo_dir = $repo_subdir;
   place_commit_msg_hook();
-  if (defined $opt->{url} or (defined $opt->{'gerrit-url'} and defined $opt->{project})) {
+
+  if (defined $manifest_info->{url}
+      and defined $manifest_info->{project}
+      and defined $manifest_info->{revision}) {
+
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
-    #mkdir($repo_subdir);
-    if (defined $opt->{url}) {
-      my $url = $opt->{url};
-      my $prj = $url;
-      $prj =~ s|^.*/||g;
-      $opt->{project} = $prj;
-      $url =~ s|^(.*)/[^/]*$|$1|;
-      $opt->{'gerrit-url'}  = $url;
-    }
-
-    $opt->{'gerrit-url'} =~ s,/*$,,;
-
-    my $manifest_info = {
-      project  => $opt->{project},
-      url      => $opt->{'gerrit-url'},
-      revision => $opt->{branch}
-    };
-
-    $manifest_info->{project} = 'manifest' unless defined $manifest_info->{project};
-    $manifest_info->{revision} = 'master' unless defined $manifest_info->{revision};
 
     my $manifest = make_manifest_prj(%$manifest_info, root     => realpath('.'));
     my $q = Hammer::Process_queue->new();
@@ -593,6 +618,7 @@ sub cmd_init
     $manifest->prepare();
     print_errors(exit => 128);
     symlink("manifests/$repo_dat_src", "$repo_subdir/manifest.xml");
+
     open my $u, ">$repo_subdir/manifests_json";
     print $u encode_json($manifest_info), "\n";
     close $u;
