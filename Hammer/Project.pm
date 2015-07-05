@@ -487,7 +487,9 @@ sub fetch
     out => \&_collect, err => \&_fetch_progress, args => $self,
     finish => sub {
       $self->{trace_fetch} = 0;
-      return "done fetching $self->{name}"
+      $self->{remote_has_updates} = 1 if ${$self->{output}}[0] ne '';
+      return "done fetching $self->{name}".
+             ($self->{remote_has_updates} ? ", has updates" : "")
     }
   );
 }

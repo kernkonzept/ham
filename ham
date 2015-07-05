@@ -658,7 +658,9 @@ $commands->add(sync => {
                        ATTENTION: This creates symbolic references into the
                        given ham repository, using 'git gc' or removing the
                        referenced repositories or parts of it might render
-                       the local repositories unusable. | ],
+                       the local repositories unusable.| ],
+    [ 'force-local-update', q|Force update of local projects although
+                              updates indicate no changes.| ],
   ],
   desc => 'checkout/update all projects'
 });
@@ -685,10 +687,29 @@ sub cmd_sync
   $q->work;
 
   print_errors(exit => 128);
-  print STDERR "Preparing gits .....................\n";
 
-  $_->prepare($opts) foreach @$projects;
-  print_errors(exit => 128);
+  my $proj_with_updates = 0;
+  if ($opts->{'force-local-update'}) {
+    $proj_with_updates = -1;
+  } else {
+    foreach (@$projects) {
+      $proj_with_updates++ if $_->{remote_has_updates};
+    }
+  }
+
+  if ($proj_with_updates != 0) {
+    print STDERR "Preparing ",
+                 $proj_with_updates == -1 ?  "all" : $proj_with_updates,
+                 " projects:\n";
+
+    foreach (@$projects) {
+      next unless $_->{remote_has_updates} || $proj_with_updates == -1;
+      $_->prepare($opts);
+    }
+    print_errors(exit => 128);
+  } else {
+    print STDERR "No updates available.\n";
+  }
 
   return 0;
 }
