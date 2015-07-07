@@ -374,7 +374,8 @@ sub sync_checkout
   }
 
   my $remote_name = $self->{_remote}->{name};
-  if (not $git->rev_parse("$remote_name/$revision")) {
+  if (not $git->rev_parse("$remote_name/$revision")
+      and not $git->rev_parse("$revision")) {
     $self->logerr("has no branch named $revision");
     return 0;
   }
