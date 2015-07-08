@@ -427,6 +427,10 @@ sub _fetch_progress
   local $_ = shift;
   my $self = shift;
   s|\n||gm;
+  if (/^\s+(.*)->\s+(.*)\s*$/) {
+    $self->{remote_has_updates} = 1;
+    $self->loginfo($_);
+  }
   if ($_ ne '' and $self->{trace_fetch} or $trace) {
     print STDERR "$self->{name}: $_\n";
     $self->logerr($_);
@@ -487,7 +491,6 @@ sub fetch
     out => \&_collect, err => \&_fetch_progress, args => $self,
     finish => sub {
       $self->{trace_fetch} = 0;
-      $self->{remote_has_updates} = 1 if ${$self->{output}}[0] ne '';
       return "done fetching $self->{name}".
              ($self->{remote_has_updates} ? ", has updates" : "")
     }
