@@ -383,7 +383,9 @@ sub load_projects
   my $xml = XML::Mini::Document->new();
   $xml->fromFile($file);
   my $manifest = $xml->toHash->{manifest};
-  preprocess_xml($manifest, KeyAttr => { project => "name", remote => "name" });
+  preprocess_xml($manifest, KeyAttr => { project_name => "project_name",
+                                         project      => "name",
+                                         remote       => "name" });
 
   #print Dumper($manifest); exit(5);
 

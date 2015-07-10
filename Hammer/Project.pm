@@ -80,6 +80,7 @@ Git::Repository::Plugin::KK->install();
 sub new
 {
   my ($class, $hash, %o) = @_;
+  $hash->{project_name} = $hash->{name} unless defined $hash->{project_name};
   $hash->{_stderr} = $o{stderr};
   $hash->{_stdout} = $o{stdout};
   $hash->{_root}   = $o{root};
@@ -485,7 +486,7 @@ sub check_ssh
 sub fetch
 {
   my $self = shift;
-  check_ssh($self->{_remote}->{fetch}, $self->{name});
+  check_ssh($self->{_remote}->{fetch}, $self->{project_name});
   return (
     $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 }),
     out => \&_collect, err => \&_fetch_progress, args => $self,
@@ -555,7 +556,7 @@ sub get_fetch_url
   $query = "" unless defined $query;
   $fragment = "" unless defined $fragment;
 
-  return "$scheme://$authority$path/$self->{name}$query$fragment";
+  return "$scheme://$authority$path/$self->{project_name}$query$fragment";
 }
 
 sub add_to_alternates
@@ -634,7 +635,7 @@ sub sync
   make_path($self->abs_path) unless $self->exists;
   if ($self->is_git_repo) {
     $r = $self->bare_git;
-    #print STDERR "fetch $self->{name} from $remote_name\n";
+    #print STDERR "fetch $self->{project_name} from $remote_name\n";
   } elsif ($self->restore_from_attic) {
     $self->{need_checkout} = 1;
   } else {
