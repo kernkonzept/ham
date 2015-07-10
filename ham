@@ -673,6 +673,7 @@ sub cmd_sync
   my $q = Hammer::Process_queue->new();
   $q->queue(sub { $manifest->sync($opts); });
   $q->work;
+  $manifest->prepare($opts);
 
   place_commit_msg_hook();
 
