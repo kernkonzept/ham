@@ -692,7 +692,7 @@ sub cmd_sync
   print_errors(exit => 128);
 
   my $proj_with_updates = 0;
-  if ($opts->{'force-local-update'} or $opts->{upstream} or $opts->{rebase}) {
+  if ($opts->{'force-local-update'} or $opts->{upstream}) {
     $proj_with_updates = -1;
   } else {
     foreach (@$projects) {
