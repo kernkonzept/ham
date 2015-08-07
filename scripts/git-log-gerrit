@@ -14,8 +14,6 @@ START_DIR=$(pwd)
 require_work_tree
 cd_to_toplevel
 
-. $(dirname $(readlink -f $0))/git-sh-gerrit
-
 otheropts=
 while test $# != 0
 do
@@ -24,12 +22,18 @@ do
       logprettyopt=$1
       shift
       ;;
+    -u|--upstream)
+       shift
+       sh_gerrit_local_upstream=$1
+       shift
+       ;;
     *) otheropts="$otheropts $1"
         shift
       ;;
   esac
 done
 
+. $(dirname $(readlink -f $0))/git-sh-gerrit
 
 for h in $(git rev-list ${sh_gerrit_local_upstream}..); do
   t=$(git show -s $h)
