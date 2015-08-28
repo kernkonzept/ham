@@ -412,6 +412,15 @@ sub load_projects
   return $projects;
 }
 
+sub project_for_path
+{
+  my ($projects, $path) = @_;
+  foreach my $p (values %$projects) {
+    return $p if $p->{path} eq $path;
+  }
+  return undef;
+}
+
 sub cleanup_stale_projects
 {
   my ($projects, $move_to_attic) = @_;
@@ -427,8 +436,13 @@ sub cleanup_stale_projects
     }
 
     if (not $p) {
-      $all_prjs{$n} = $sp;
-      push @$info, "leave stale project behind: ".$n." @ ".$sp->{path};
+      my $same_path_prj = project_for_path($projects, $sp->{path});
+      if (defined $same_path_prj) {
+        push @$info, "rename project: $sp->{name} @ $sp->{path} to $same_path_prj->{name}";
+      } else {
+        $all_prjs{$n} = $sp;
+        push @$info, "leave stale project behind: ".$n." @ ".$sp->{path};
+      }
     } elsif ($sp->{path} ne $p->{path}) {
       push @$info, $n.": moved to new location: ".$sp->{path}." -> ".$p->{path};
       $p->migrate_from($sp->{path})
