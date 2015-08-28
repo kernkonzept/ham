@@ -808,7 +808,12 @@ $commands->add(forall => {
     { pre_args => 1 },
     [ 'abort-on-errors|e' , 'Abort if a command exits with an exitcode other than zero' ],
     [ 'p',                  'print project name before each execution of <cmd>' ],
-    [ 'vars|i',           qq|prelace special '{...}' tokens within the arguments| ],
+    [ 'vars|i',           qq|replace special '{...}' tokens within the arguments.
+                             Variables are:
+                               {UPSTREAM}: The upstream revision.
+                               {REMOTE}:   The name of the remote as defined in the maifest.
+                               {PRJNAME}:  The project name as used on the server.| ],
+    [ 'include-manifest|m', 'Also include the manifest project'],
   ],
   desc => 'run <cmd> for all projects'
 });
@@ -826,6 +831,8 @@ sub cmd_forall
 
   my $res = foreach_prj {
     my $r = $_;
+    return 0 if not $opt->{'include-manifest'} and $r->{is_manifest};
+
     print colored("$r->{name}: $r->{path}\n", 'bold') if $print_prj;
     chdir $r->abs_path;
     my @argv = @ARGV;
@@ -834,6 +841,7 @@ sub cmd_forall
       my $remote_name = $r->{_remote}->{name};
       s,\{UPSTREAM\},$upstream,g foreach @argv;
       s,\{REMOTE\},$remote_name,g foreach @argv;
+      s,\{PRJNAME\},$r->{name},g foreach @argv;
     }
     my $res = system(@argv);
     return ($res) if $res and $opt->{'abort-on-errors'};
