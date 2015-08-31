@@ -352,14 +352,21 @@ sub preprocess_xml
     my $key = shift;
     my $node = shift;
     $in = [ $in ] unless ref $in eq 'ARRAY';
+    $key = [ $key ] unless ref $key eq 'ARRAY';
     my $out = {};
     foreach my $e (@$in) {
-      my $k = $e->{$key};
-      if (not defined $k) {
-        print STDERR "error: missing '$key' attribute in <$node ...> node\n";
+      my $n = undef;
+      foreach my $k (@$key) {
+        $n = $e->{$k};
+        if (defined $n) {
+          $out->{$n} = $e;
+          last;
+        }
+      }
+      if (not defined $n) {
+        print STDERR "error: missing '@$key' attribute in <$node ...> node\n";
         next;
       }
-      $out->{$k} = $e;
     }
     return $out;
   }
@@ -371,6 +378,66 @@ sub preprocess_xml
   }
 }
 
+#use Data::Dumper;
+
+sub load_xml_manifest
+{
+  my $file = shift;
+  my $xml = XML::Mini::Document->new();
+  $xml->fromFile($file);
+  my $manifest = $xml->toHash->{manifest};
+  preprocess_xml($manifest, KeyAttr => {
+      project          => ["project_name", "name"],
+      'remove-project' => ["project_name", "name"],
+      'extend-project' => ["project_name", "name"],
+      remote           => "name",
+      'remove-remote'  => "name",
+      'extend-remote'  => "name" });
+  # print Dumper($manifest);
+  return $manifest;
+}
+
+sub override_manifest_node
+{
+  my ($file, $node, $m, $add) = @_;
+
+  foreach my $p (keys %{$add->{'remove-' . $node}}) {
+    delete $m->{$node}{$p};
+  }
+
+  while (my ($pn, $p) = each %{$add->{$node}}) {
+    if (defined $m->{$node}{$pn}) {
+      print STDERR "error: duplicate $node '$pn' defined in file $file\n";
+      next;
+    }
+    $m->{$node}{$pn} = $p;
+  }
+
+  while (my ($pn, $p) = each %{$add->{'extend-' . $node}}) {
+    if (not defined $m->{$node}{$pn}) {
+      print STDERR "error: $node '$pn' not found, cannot extend from file $file\n";
+      next;
+    }
+    while (my ($k, $v) = each %$p) {
+      $m->{$node}{$pn}{$k} = $v;
+    }
+  }
+}
+
+sub add_manifest
+{
+  my ($file, $m, $add) = @_;
+  # merge defaults
+  foreach my $def (qw(remote revision)) {
+    $m->{default}{$def} = $add->{default}{$def} if $add->{default}{$def};
+  }
+  foreach my $sec (qw(project remote)) {
+    override_manifest_node($file, $sec, $m, $add);
+  }
+  # print "==== After loading $file ====\n";
+  # print Dumper($m);
+}
+
 # load all projects, including the manifest
 sub load_projects
 {
@@ -379,15 +446,20 @@ sub load_projects
     return plain_git_project();
   }
 
-  my $file = repo_manifest();
-  my $xml = XML::Mini::Document->new();
-  $xml->fromFile($file);
-  my $manifest = $xml->toHash->{manifest};
-  preprocess_xml($manifest, KeyAttr => { project_name => "project_name",
-                                         project      => "name",
-                                         remote       => "name" });
-
-  #print Dumper($manifest); exit(5);
+  my $manifest = load_xml_manifest(repo_manifest());
+  my $local_manifests_dir = catdir($ham_dir, "local_manifests");
+  if (-d $local_manifests_dir) {
+    opendir(my $lm, $local_manifests_dir)
+      or die "cannot open local manifest directory '$local_manifests_dir': $!";
+    foreach my $d (sort (readdir($lm))) {
+      next if not $d =~ /\.xml$/i;
+      my $f = File::Spec->catfile($local_manifests_dir, $d);
+      next if not -f $f;
+      my $add = load_xml_manifest($f);
+      add_manifest($f, $manifest, $add);
+    }
+    closedir $lm;
+  }
 
   my $projects = $manifest->{project};
   foreach my $r (values %$projects) {
