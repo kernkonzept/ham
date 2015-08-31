@@ -412,7 +412,7 @@ sub load_projects
   return $projects;
 }
 
-sub project_for_path
+sub project_for_rel_path
 {
   my ($projects, $path) = @_;
   foreach my $p (values %$projects) {
@@ -436,7 +436,7 @@ sub cleanup_stale_projects
     }
 
     if (not $p) {
-      my $same_path_prj = project_for_path($projects, $sp->{path});
+      my $same_path_prj = project_for_rel_path($projects, $sp->{path});
       if (defined $same_path_prj) {
         push @$info, "rename project: $sp->{name} @ $sp->{path} to $same_path_prj->{name}";
       } else {
