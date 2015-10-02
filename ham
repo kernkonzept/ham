@@ -1851,14 +1851,14 @@ $commands->add('add' => {
     my $all_projects = load_projects();
     my %projects;
     foreach my $file (@files) {
-      my ($p, $path) = project_for_path($all_projects, $file);
-      if (not $p) {
-        push @$err, "no matching project found for file: $file";
+      if (not -e $file) {
+        push @$err, "file $file does not exist";
         next;
       }
 
-      if (not -e $file) {
-        push @$err, "file $file does not exist";
+      my ($p, $path) = project_for_path($all_projects, $file);
+      if (not $p) {
+        push @$err, "no matching project found for file: $file";
         next;
       }
 
