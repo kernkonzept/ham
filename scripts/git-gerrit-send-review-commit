@@ -43,7 +43,7 @@ done
 
 . $(dirname $(readlink -f $0))/git-sh-gerrit
 
-git fetch
+git fetch $sh_gerrit_origin_name $sh_gerrit_branch_remote
 
 local_upstream_hash=$(git rev-parse $sh_gerrit_local_upstream)
 tmpdir=$(mktemp -d)
