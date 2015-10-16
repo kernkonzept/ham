@@ -65,11 +65,19 @@ git checkout -b picked_commits
 
 for commit in "$@"; do
   if [ -e "$commit" ]; then
-    echo "Applying $commit"
-    git am "$commit" || exit 1
+    echo "Applying: " $(git log --oneline -1 $commit)
+    git am "$commit"
   else
-    echo "Picking $commit"
-    git cherry-pick $commit || exit 1
+    echo "Picking: " $(git log --oneline -1 $commit)
+    git cherry-pick $commit
+  fi
+
+  if [ $? != 0 ]; then
+    echo
+    echo "Failed to apply:"
+    git status
+    git diff
+    exit 1
   fi
 done
 
