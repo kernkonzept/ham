@@ -1,7 +1,20 @@
 #! /bin/sh
 
 if [ -z "$sh_gerrit_local_upstream" ]; then
-  sh_gerrit_local_upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
+  sh_gerrit_local_upstream=$( \
+    git config --bool --get-regexp '^remote\.[^.]*\.ham$' true \
+    | while read o b; do \
+      if [ -n "$rem" ]; then \
+        echo "Multiple ham-enabled remotes found. Which one to take? (Use -u)" >&2; \
+        exit 1; \
+      fi; \
+      rem=$(echo $o | while IFS=. read r rem ham; do echo $rem; done); \
+      echo $rem/$(git config --get "ham.$rem.revision"); \
+    done)
+  [ $? == 0 ] || exit 1
+  if [ -z "$sh_gerrit_local_upstream" ]; then
+    sh_gerrit_local_upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
+  fi
 fi
 
 sh_gerrit_origin_name=${sh_gerrit_local_upstream%%/*}
