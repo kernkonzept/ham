@@ -9,3 +9,9 @@ and integration with Gerrit Code Review.
 
 The outstanding feature is support for consistent changes
 in multiple repositories.
+
+
+## Usage note for CentOS / RHEL
+
+To run ham on CentOS or RHEL, you need to install
+`perl-Archive-Zip` and `perl-parent` packages.
