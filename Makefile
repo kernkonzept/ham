@@ -1,11 +1,17 @@
 EXCLUDE_MODS := IO::Tty IO::Pty
 
-all: ham.pl
+HAM_PL  ?= ham.pl
+SRC_DIR ?= .
 
-ham.par: ham
+all: $(HAM_PL)
+
+clean:
+	rm -f $(HAM_PL) .ham.d ham.par
+
+ham.par: $(SRC_DIR)/ham
 	pp -vvv $(addprefix-X ,$(EXCLUDE_MODS)) -p -o $@ $< | grep -E "adding\s+/" | cut -f 4 -d' ' | xargs echo $@: >.ham.d
 
-ham.pl: ham.par par-archive
-	./par-archive -b -O$@ $<
+$(HAM_PL): ham.par $(SRC_DIR)/par-archive
+	$(SRC_DIR)/par-archive -b -O$@ $<
 
 -include .ham.d
