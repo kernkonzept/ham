@@ -656,6 +656,28 @@ sub cmd_init
 
   my $manifest_info = split_manifest_url($opt);
 
+  if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
+    # remove old url file
+    unlink File::Spec->catdir($repodir, 'manifests_url')
+      if -f File::Spec->catdir($repodir, 'manifests_url');
+
+    my $i = read_ham_json_file('manifests_json');
+    die "fatal: half initialized ham directory" if not defined $i;
+    if ((defined $manifest_info->{url} and $manifest_info->{url} ne $i->{url})
+        or (defined $manifest_info->{project} and $manifest_info->{project} ne $i->{project})) {
+      die "fatal: ham directory already initialized for different URL $i->{url}"
+    }
+
+    if ($i->{revision} ne $manifest_info->{revision}) {
+      print STDERR "warning: updating manifest branch from ".
+                   "'$i->{revision}' to '$manifest_info->{revision}'\n";
+      $i->{revision} = $manifest_info->{revision};
+      write_ham_json_file($i, 'manifests_json');
+    }
+    print STDERR "warning: ham directory already initialized\n";
+    return 0;
+  }
+
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_url')) {
     open my $mf, "<".get_repo_dir().'/manifests_url' or die "cannot open manifest_url file: $!";
     my $manifest_url = <$mf>;
@@ -673,15 +695,6 @@ sub cmd_init
     return 0;
   }
 
-  if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
-    my $i = read_ham_json_file('manifests_json');
-    die "fatal: half initialized ham directory" if not defined $i;
-    die "fatal: ham directory already initialized for different URL $i->{url}"
-      if ($manifest_info->{url} ne $i->{url}
-          or $manifest_info->{project} ne $i->{project});
-    print STDERR "warning: ham directory already initialized\n";
-    return 0;
-  }
 
   if (defined $repodir) {
     print STDERR "fatal: half initialized ham directory, please cleanup\n";
