@@ -12,7 +12,9 @@ use Hammer::Project::Status;
 
 #################################
 # Git::Repository::Plugin::KK
-package Git::Repository::Plugin::KK {
+{
+package Git::Repository::Plugin::KK;
+
   use Git::Repository::Plugin;
   our @ISA      = qw( Git::Repository::Plugin );
   sub _keywords { qw( rev_parse config config_set cat_object merge rebase ) }
