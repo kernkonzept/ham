@@ -46,7 +46,8 @@ sub pager
   $pag = $ENV{PAGER} unless $pag;
   if (-t STDOUT and $pag) {
     my $out;
-    return $out if open $out, "|$pag";
+    my $less_opt = $ENV{LESS} ? '' : "LESS=FRX";
+    return $out if open $out, "| $less_opt $pag";
   }
   return *STDOUT;
 }
