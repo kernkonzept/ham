@@ -35,6 +35,11 @@ while true; do
        additional_repos="$additional_repos $1"
        shift
        ;;
+     --onto-change-id)
+       shift
+       onto_change_id="$1"
+       shift
+       ;;
     *)
       break
       ;;
@@ -51,10 +56,16 @@ tmpdir=$(mktemp -d)
 
 trap "echo rm -fr $tmpdir; rm -fr $tmpdir" 0 1 2 3 15
 
-email=$(git config user.email)
+config_email=$(git config user.email)
+config_ham_remote_revision=$(git config ham.origin.revision)
+config_remote_url=$(git config remote.${sh_gerrit_origin_name}.url)
 git clone -n $toplevel_dir $tmpdir || die "git clone failed"
 cd $tmpdir || die "Cannot change directory to $tmpdir"
-git config user.email $email
+git config user.email $config_email
+git config remote.origin.url $config_remote_url
+git config remote.origin.ham true
+git config ham.remote origin
+git config ham.origin.revision $config_ham_remote_revision
 reponr=1
 for r in $additional_repos; do
   git remote add -f add_repo_$reponr $r
@@ -62,6 +73,10 @@ for r in $additional_repos; do
 done
 git checkout -b remote_head $local_upstream_hash || die "git checkout failed"
 git checkout -b picked_commits
+
+if [ -n "$onto_change_id" ]; then
+  ham download-id -p $onto_change_id
+fi
 
 for commit in "$@"; do
   if [ -e "$commit" ]; then
