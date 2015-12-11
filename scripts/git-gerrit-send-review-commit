@@ -30,6 +30,14 @@ while true; do
        fi
        shift
        ;;
+    -n|--dry-run)
+       shift
+       dryrun=n
+       ;;
+    -v|--verbose)
+       shift
+       verbose=1
+       ;;
     --addrepo)
        shift
        additional_repos="$additional_repos $1"
@@ -102,4 +110,4 @@ git log --oneline remote_head..picked_commits
 echo "on"
 git log --oneline remote_head^..remote_head
 set -x
-git push -v $sh_gerrit_repo_url picked_commits:refs/for/$sh_gerrit_branch_remote$reviewer
+git push -v$dryrun $sh_gerrit_repo_url picked_commits:refs/for/$sh_gerrit_branch_remote$reviewer
