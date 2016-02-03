@@ -330,6 +330,19 @@ sub sync_checkout
 
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
 
+  if (not defined $self->{revision}) {
+    my $remote = $self->{remote} || 'origin';
+    my @remote_rev = map { s/(.*?):\s*(.*)\s*$/$2/; $_ }
+                     grep /HEAD branch:/,
+                     $git->run("remote", "show", $remote);
+    if (@remote_rev) {
+      $self->{revision} = $remote_rev[0];
+    } else {
+      $self->logerr("Can not find remote default branch, please provide --branch");
+      return 0;
+    }
+  }
+
   # return if we have already a valid checkout, don't touch the working copy
   if (defined $self->{need_checkout}) {
     delete $self->{need_checkout};

@@ -336,7 +336,7 @@ sub manifest_prj
       close $mf;
       chomp($manifest_url);
 
-      $manifest_info = { url => $manifest_url, revision => 'master', project => 'manifest' };
+      $manifest_info = { url => $manifest_url, project => 'manifest' };
       write_ham_json_file($manifest_info, 'manifests_json');
     }
   return make_manifest_prj(%$manifest_info);
@@ -644,7 +644,6 @@ sub split_manifest_url
   }
 
   $manifest_info->{revision} = $opt->{branch} if defined $opt->{branch};
-  $manifest_info->{revision} = 'master' unless defined $opt->{branch};
 
   return $manifest_info;
 }
@@ -669,13 +668,25 @@ sub cmd_init
       die "fatal: ham directory already initialized for different URL $i->{url}"
     }
 
-    if ($i->{revision} ne $manifest_info->{revision}) {
+    print STDERR "warning: ham directory already initialized\n";
+
+    # no new revision, don't do anything
+    if (not defined $manifest_info->{revision}) {
+      return 0;
+    }
+
+    # set or update to new revision
+    if (not defined $i->{revision}) {
+      print STDERR "warning: set manifest branch to ".
+                   "'$manifest_info->{revision}'\n";
+      $i->{revision} = $manifest_info->{revision};
+      write_ham_json_file($i, 'manifests_json');
+    } elsif ($i->{revision} ne $manifest_info->{revision}) {
       print STDERR "warning: updating manifest branch from ".
                    "'$i->{revision}' to '$manifest_info->{revision}'\n";
       $i->{revision} = $manifest_info->{revision};
       write_ham_json_file($i, 'manifests_json');
     }
-    print STDERR "warning: ham directory already initialized\n";
     return 0;
   }
 
@@ -706,8 +717,7 @@ sub cmd_init
   place_commit_msg_hook();
 
   if (defined $manifest_info->{url}
-      and defined $manifest_info->{project}
-      and defined $manifest_info->{revision}) {
+      and defined $manifest_info->{project}) {
 
     # try to download a manifest repo
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
