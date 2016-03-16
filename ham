@@ -52,6 +52,21 @@ sub pager
   return *STDOUT;
 }
 
+sub max_conns
+{
+  my $o = shift;
+  return $o->{'max-connections'} if defined $o->{'max-connections'};
+  return $config{core}{'max-connections'} if defined $config{core}{'max-connections'};
+  return 8;
+}
+
+my $max_conns_option =
+  [ 'max-connections|max-conn=i',
+    q|set the maximum number of simultaneous connections used
+      for git fetches. The default is 8.
+      The default can also be set using [core] max-connections = <n>
+      in your '.hamconfig' file.|, { arg => '<max connections>' } ];
+
 sub filter_projects
 {
   my ($projects, $argv) = @_;
@@ -624,6 +639,7 @@ $commands->add(init => {
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
     [ 'branch|br=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
+    $max_conns_option
   ],
   desc => "initialize $prog meta project in the curent directory"
 });
@@ -723,7 +739,7 @@ sub cmd_init
     $repo_dat_src = 'default.xml' unless defined $repo_dat_src;
 
     my $manifest = make_manifest_prj(%$manifest_info, root     => realpath('.'));
-    my $q = Hammer::Process_queue->new();
+    my $q = Hammer::Process_queue->new(max => max_conns($opt));
     $q->queue(sub { $manifest->sync; });
     $q->work;
     print_errors(exit => 128);
@@ -774,6 +790,7 @@ $commands->add(sync => {
                        the local repositories unusable.| ],
     [ 'force-local-update', q|Force update of local projects although
                               updates indicate no changes.| ],
+    $max_conns_option
   ],
   desc => 'checkout/update all projects'
 });
@@ -783,7 +800,7 @@ sub cmd_sync
   my ($opts, $command, $cmd) = @_;
   # update manifest repo, if there is any
   my $manifest = manifest_prj();
-  my $q = Hammer::Process_queue->new();
+  my $q = Hammer::Process_queue->new(max => max_conns($opts));
   $q->queue(sub { $manifest->sync($opts); });
   $q->work;
   $manifest->prepare($opts);
@@ -1199,7 +1216,7 @@ sub fetch_and_co_changes
 {
   my ($opts, $changes) =  @_;
 
-  my $q = Hammer::Process_queue->new();
+  my $q = Hammer::Process_queue->new(max => max_conns($opts));
   foreach my $c (values %$changes) {
     my $prj = $c->{prj};
     my $remote_name = $prj->{_remote}->{name};
@@ -1287,7 +1304,8 @@ $commands->add(download => {
     [ 'detach|d',          q|create a detached head in even for pull or cherry-pick|],
     [ 'remote|r=s',        q|Use <remote> as git remote to fetch the change,
                              instead of using the remote configured in the manifest.|,
-                           { arg => '<remote>' } ]
+                           { arg => '<remote>' } ],
+    $max_conns_option
   ],
   desc => q|Download a change for the given project into your local working copy|,
   cmd => sub {
@@ -1469,7 +1487,8 @@ $commands->add('download-id' => {
                              there is no ambiguity.|, { arg => '<branch>' } ],
     [ 'dry-run|n',         q|do not checkout anything| ],
     [ 'verbose|v',         q|enable verbose mode| ],
-  ],
+    $max_conns_option
+ ],
   desc => q|Download all changes for all projects with the given change ID (Change-Id)
             to your local working copy|,
   cmd => sub {
