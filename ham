@@ -972,7 +972,9 @@ $commands->add(checkout => {
   cmd  => \&cmd_checkout,
   syn  => [
     '%c <branch> [<project>...]',
-    [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be iterated' ]
+    [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be iterated' ],
+    [ 'detach',            'Create datached heads' ],
+    [ 'b=s',               'Create a new branch named <new_branch> and start it at <branch>', { arg => '<new_branch>' } ],
   ],
   desc => 'checkout <branch> in all projects'
 });
@@ -983,8 +985,12 @@ sub cmd_checkout
   my $branch = shift @ARGV;
   $cmd->print_usage($command) unless defined $branch;
   my $abt = $opts->{'abort-on-errors'};
+  my @args = ();
+  push @args, '--detach' if defined $opts->{detach};
+  push @args, '-b', $opts->{b} if defined $opts->{b};
+  push @args, $branch;
   return foreach_prj {
-    my $r = $_->checkout($branch);
+    my $r = $_->checkout(@args);
     return $r if $r and $abt;
     return 0;
   };

@@ -532,7 +532,7 @@ sub checkout
   # push @args, '--' unless grep /^--$/, @args;
 
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
-  return if defined $head and $head eq $$branch;
+  return if defined $head and $head eq $$branch and @args == 1;
   $head = '' unless defined $head;
 
   my $cmd = $git->command('checkout', @args, {fatal => [-128], quiet => 1});
