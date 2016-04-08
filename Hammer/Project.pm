@@ -359,6 +359,14 @@ sub sync_checkout
         }
       }
     } else {
+      # avoid touching dirty local HEAD branches
+      if (($head eq $self->{revision}) and ($self->status->is_dirty)) {
+        $self->loginfo("WARNING: your local working copy has changes, skipping fast-forward.",
+                       "         you may use 'git stash; git pull -r; git stash pop'",
+                       "         locally to resolve the problem.");
+        return 1;
+      }
+
       my $cmd = $self->git->command('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {quiet => 1, fatal => [-128 ]});
       $self->handle_output($cmd);
 
