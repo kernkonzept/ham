@@ -976,6 +976,7 @@ $commands->add(checkout => {
     [ 'detach',            'Create datached heads' ],
     [ 'b=s',               'Create a new branch named <new_branch> and start it at <branch>', { arg => '<new_branch>' } ],
     [ 'include-manifest|m', 'Also include the manifest project'],
+    [ 'delete-branch-before-checkout',     'delete the local branch before checkout'],
   ],
   desc => 'checkout <branch> in all projects'
 });
@@ -993,6 +994,10 @@ sub cmd_checkout
   return foreach_prj {
     my $p = $_;
     return 0 if not $opts->{'include-manifest'} and $p->{is_manifest};
+
+    if ($opts->{'delete-branch-before-checkout'}) {
+      my $x = $p->git($p->{_stderr})->run('branch', '-D', $branch, { quiet => 1, fatal => [-128 ]});
+    }
 
     my $r = $p->checkout(@args);
     return $r if $r and $abt;
