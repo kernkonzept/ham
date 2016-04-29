@@ -975,6 +975,7 @@ $commands->add(checkout => {
     [ 'abort-on-errors|e', 'Abort on any error, otherwise all projects will be iterated' ],
     [ 'detach',            'Create datached heads' ],
     [ 'b=s',               'Create a new branch named <new_branch> and start it at <branch>', { arg => '<new_branch>' } ],
+    [ 'include-manifest|m', 'Also include the manifest project'],
   ],
   desc => 'checkout <branch> in all projects'
 });
@@ -990,7 +991,10 @@ sub cmd_checkout
   push @args, '-b', $opts->{b} if defined $opts->{b};
   push @args, $branch;
   return foreach_prj {
-    my $r = $_->checkout(@args);
+    my $p = $_;
+    return 0 if not $opts->{'include-manifest'} and $p->{is_manifest};
+
+    my $r = $p->checkout(@args);
     return $r if $r and $abt;
     return 0;
   };
