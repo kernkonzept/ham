@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 # by adam@l4re.org
 
 dashless=$(basename "$0" | sed -e 's/-/ /')
