@@ -1891,7 +1891,7 @@ $commands->add('commit' => {
     close $commit_msg;
 
     foreach my $p (@commit_prj) {
-      print "commting in: $p->{path}\n";
+      print "committing in: $p->{path}\n";
       print $p->git->run(commit => '-F', $file), "\n";
     }
   }
