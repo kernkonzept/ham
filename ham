@@ -774,7 +774,7 @@ $commands->add(sync => {
   syn  => [
     '%c [<project>...]',
     [ 'rebase',   q|rebase the current branch onto the
-                    corresponging branch in the projects remote| ],
+                    corresponding branch in the projects remote| ],
     [ 'upstream', q|checkout the upstream revisions as defined in
                     the manifest| ],
     [ 'cleanup',  q|cleanup moved and stale projects. Using this option
@@ -925,7 +925,7 @@ $commands->add(forall => {
     [ 'vars|i',           qq|replace special '{...}' tokens within the arguments.
                              Variables are:
                                {UPSTREAM}: The upstream revision.
-                               {REMOTE}:   The name of the remote as defined in the maifest.
+                               {REMOTE}:   The name of the remote as defined in the manifest.
                                {PRJNAME}:  The project name as used on the server.| ],
     [ 'include-manifest|m', 'Also include the manifest project'],
   ],
@@ -1769,7 +1769,7 @@ $commands->add('commit' => {
     [ 'file|F=s',           'File containing the commit message', { arg => '<msg-file>' } ]
   ],
   desc => qq|Create a single commit across multiple projects. The commit
-             will get the same commit message and more important the same
+             will get the same commit message and more importantly the same
              change ID.|,
   cmd => sub {
     my ($opts, $command, $cmd) = @_;

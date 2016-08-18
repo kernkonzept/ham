@@ -23,7 +23,7 @@ sub new
 }
 
 
-## test if the queue is fully loaded (max numbber of runnning processes)
+## test if the queue is fully loaded (max number of running processes)
 sub full
 {
   my $self = shift;

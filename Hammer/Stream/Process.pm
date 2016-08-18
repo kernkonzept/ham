@@ -33,7 +33,7 @@ sub gc
   @{$self->{streams}} = grep { not $_->{done} } @{$self->{streams}};
 }
 
-## are there any sreams left ?
+## are there any streams left ?
 sub done
 {
   my ($self) = @_;
