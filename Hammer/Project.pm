@@ -694,7 +694,7 @@ sub print_status
 
 sub check_rev_list
 {
-  my ($prj, $r, $src_br, $rev_list) = @_;
+  my ($prj, $r, $src_br, $rev_list, $relax) = @_;
 
   my @no_chid = ();
   my %duplicate_chid = ();
@@ -733,10 +733,12 @@ sub check_rev_list
   {
     my ($msg, $e) = @_;
     return unless @$e;
-    $prj->logerr("branch $src_br: $msg");
+    my $logger = 'logerr';
+    $logger = 'loginfo' if $relax;
+    $prj->$logger("branch $src_br: $msg");
     foreach my $c (@$e) {
       my $x = $r->run('log', '-n', '1' ,'--oneline', '--color=always', $c);
-      $prj->logerr("  $x");
+      $prj->$logger("  $x");
     }
   };
 
@@ -753,7 +755,7 @@ sub check_rev_list
 
 sub check_for_upload
 {
-  my ($prj, $warn, $src_br, $dst_br, $approve_cb) = @_;
+  my ($prj, $warn, $src_br, $dst_br, $approve_cb, $relax) = @_;
   my $r = $prj->git($prj->{_stderr});
   my $src_rev = $r->rev_parse($src_br);
 
@@ -788,7 +790,7 @@ sub check_for_upload
   }
 
   # check if all commits have change IDs
-  return 0 unless $prj->check_rev_list($r, $src_br, \@commits);
+  return 0 unless ($prj->check_rev_list($r, $src_br, \@commits, $relax) || $relax);
 
   # check the number of changes for this branch
   my $num_changes = scalar(@commits);

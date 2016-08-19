@@ -1141,6 +1141,7 @@ $commands->add(upload => {
     [ 'br=s',            'Upload <local branch> for review',                      { arg => '<local-branch>' } ],
     [ 'dest|destination|D=s', 'Upload commit for destination branch',             { arg => '<branch>' } ],
     [ 'dry-run|n',       'Do a dry run, just print the git commands that would be issued' ],
+    [ 'relax|R',         'Do not abort because of missing change IDs' ],
   ],
   desc => 'upload changes for review'
 });
@@ -1158,7 +1159,7 @@ sub cmd_upload
   foreach my $prj (@$projects) {
     my ($upload, $src_br, $dst_br)
       = $prj->check_for_upload(\@warn, $opts->{br}, $opts->{dest},
-                               \&approve_dependent_changes);
+                               \&approve_dependent_changes, $opts->{relax});
 
     push @good_projects, [ $prj, $src_br, $dst_br ] if $upload;
   }
