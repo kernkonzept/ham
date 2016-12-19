@@ -1262,7 +1262,7 @@ sub fetch_and_co_changes
       } else {
         push @log, [ $_[0], "$op failed, aborting" ];
         $git->$op($info, '--abort');
-        push @$err, "$op failed: aborting!";
+        push @$err, $_[0]->{name} . ": $op failed: aborting!";
         print_errors(exit => 128);
       }
     };
