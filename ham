@@ -1503,6 +1503,7 @@ $commands->add('download-id' => {
                              there is no ambiguity.|, { arg => '<branch>' } ],
     [ 'dry-run|n',         q|do not checkout anything| ],
     [ 'verbose|v',         q|enable verbose mode| ],
+    [ 'print-footers',     q|Print commit message footers for the downloaded changes| ],
     $max_conns_option
  ],
   desc => q|Download all changes for all projects with the given change ID (Change-Id)
@@ -1551,6 +1552,19 @@ $commands->add('download-id' => {
 
         if (scalar @revs && defined $revs[0] && (not $recurse)) {
           print "downloaded change HEAD: $prj_name: $revs[0]\n";
+          if ($opts->{'print-footers'}) {
+            my $cmd = $p->git->command('cat-file', '-p', $revs[0]);
+            my @msg = $cmd->final_output;
+            my @f;
+            while (my $l = pop @msg) {
+              next if $l =~ /^\s*$/;
+              last unless $l =~ /^[a-z][a-z_-]*:\s*.*$/i;
+              unshift @f, $l;
+            }
+            if (@f) {
+              print "$_\n" foreach (@f);
+            }
+          }
         }
 
         my $cmd = $p->git->command('cat-file', '--batch', { input => join("\n", @revs)."\n" });
