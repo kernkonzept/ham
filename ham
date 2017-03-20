@@ -28,6 +28,7 @@ my $prog = 'ham';
 
 my $user_config = File::Spec->catdir($ENV{HOME}, ".hamconfig");
 my %config = ();
+my %change_sources = ();
 
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
@@ -38,6 +39,17 @@ if (-t STDOUT) {
   }
 } else {
   *colored = sub { return $_[0]; }
+}
+
+sub add_change_source
+{
+  my ($source) = @_;
+  my $n = $source->name;
+  if (!$source->can('upload') || !$source->can('changes')) {
+    die "internal error: change source $n is invalid\n";
+  }
+
+  $change_sources{$n} = $source;
 }
 
 sub pager
@@ -1188,39 +1200,10 @@ sub cmd_upload
   }
   print "\n";
 
-  my @base_attr;
-  foreach my $c (map { split /,/ } @{$opts->{re}}) {
-    push @base_attr, "r=$c";
-  }
-
-  foreach my $c (map { split /,/ } @{$opts->{cc}}) {
-    push @base_attr, "cc=$c";
-  }
-
-  my $target = 'for';
-  $target = 'drafts' if ($opts->{draft});
-
   foreach my $p (@good_projects) {
     my ($prj, $src_br, $dst_br) = @$p;
-    my $dst_ref = catdir('refs', $target, $dst_br);
-    my @attrs;
-    my $r = $prj->bare_git;
-    if ($opts->{topic}) {
-      push @attrs, "topic=$opts->{topic}";
-    } elsif ($opts->{t}) {
-      $src_br = $r->rev_parse('--abbrev-ref', $src_br) if $src_br eq 'HEAD';
-      push @attrs, "topic=$src_br";
-    }
-    push @attrs, @base_attr;
-    if (@attrs) {
-      $dst_ref .= "%".join(',', @attrs);
-    }
-
-    if ($opts->{'dry-run'}) {
-      print "$prj->{path}: git push $prj->{remote} $src_br:$dst_ref\n";
-    } else {
-      push @$info, $r->run('push', $prj->{remote}, "$src_br:$dst_ref");
-    }
+    my $cs = get_change_source($prj);
+    $cs->upload($prj, $dst_br, $src_br, $opts) if defined $cs;
   }
 
   return 0;
@@ -1235,11 +1218,8 @@ sub fetch_and_co_changes
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
   foreach my $c (values %$changes) {
     my $prj = $c->{prj};
-    my $remote_name = $prj->{_remote}->{name};
-    my $change = $c->{change};
-    my $patchset = $c->{patchset};
-
-    $q->queue(sub { $prj->fetch($remote_name, sprintf("refs/changes/%02d/%d/%d", ($change % 100), $change, $patchset)); });
+    my $remote_name = $prj->{_remote}{name};
+    $q->queue(sub { $prj->fetch($remote_name, $c->{src_ref}); });
   }
 
   $q->work;
@@ -1258,7 +1238,7 @@ sub fetch_and_co_changes
       $op = 'rebase' if defined $opts->{rebase};
       my $r = $git->$op($info, 'FETCH_HEAD');
       if ($r == 0) {
-        push @log, [ $_[0], "${op}d %c/%p into $head" ];
+        push @log, [ $_[0], "${op}d %{desc} into $head" ];
       } else {
         push @log, [ $_[0], "$op failed, aborting" ];
         $git->$op($info, '--abort');
@@ -1272,13 +1252,13 @@ sub fetch_and_co_changes
       $git->run("checkout", "--detach") if $opts->{detach};
       my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
       push @$info, $git->run('cherry-pick', 'FETCH_HEAD');
-      push @log, [ $_[0], "cherry picked %c/%p onto $head" ];
+      push @log, [ $_[0], "cherry picked %{desc} onto $head" ];
     };
   } else {
     $action = sub {
       my $git = $_[0]->git;
       $_[0]->checkout('--detach', '-q', 'FETCH_HEAD');
-      push @log, [ $_[0], "checked out %c/%p as detached HEAD" ];
+      push @log, [ $_[0], "checked out %{desc} as detached HEAD" ];
     };
   }
 
@@ -1294,13 +1274,9 @@ sub fetch_and_co_changes
     my $msg = $log->[1];
     my $remote_name = $prj->{_remote}->{name};
     my $c = $changes->{$prj->{name}};
-    my $change = $c->{change};
-    my $patchset = $c->{patchset};
-    #my $rev = $c->{chg}{currentPatchSet}{revision};
+    my $desc = $c->{desc};
 
-    $msg =~ s,%c,$change,g;
-    $msg =~ s,%p,$patchset,g;
-    #$msg =~ s,%r,$rev,g;
+    $msg =~ s,%\{desc\},$desc,g;
 
     print "  $prj->{name} [$remote_name]: $msg\n";
   }
@@ -1339,47 +1315,38 @@ $commands->add(download => {
       $cmd->usage_error($command, "error: invalid change/patchset format '$change'");
     }
 
-    return fetch_and_co_changes($opts,
-      { $prjn => { prj => $prj, change => $change, patchset => $patchset }}
-    );
+    return fetch_and_co_changes($opts, {
+      $prjn => {
+        project  => $prj->{name},
+        prj      => $prj,
+        src_ref  => sprintf("refs/changes/%02d/%d/%d", ($change % 100), $change, $patchset),
+        desc     => "change $change/$patchset",
+        chg      => {}
+      }
+    });
   }
 });
 
-sub gerrit_query_changes
+###############
+# Gerrit integration helpers
+#####
+sub get_gerrit_change_ref
 {
-  my ( $prjs, $opts, $recursion, @change_ids ) = @_;
-  my $branch = $opts->{branch};
-  my $verbose = $opts->{verbose};
-  my %queries = ();
-  foreach my $p (values %$prjs) {
-    foreach my $chid (@change_ids) {
-      my $uri = URI->new($p->{_remote}->{fetch});
-      if ($uri->scheme eq 'ssh') {
-        my $query = 'ssh';
-        $query .= ' -p '.$uri->_port if defined $uri->_port;
-        $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
-        $query .= ' '.$uri->host;
-        $query .= " gerrit query --current-patch-set --format=JSON change:$chid";
-        $queries{$query} = 1;
-      } else {
-        push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
-      }
-    }
-  }
+  my ($change, $ps) = @_;
+  return sprintf("refs/changes/%02d/%d/%d", ($change % 100), $change, $ps);
+}
 
-  if (not %queries) {
-    print_errors();
-    print STDERR "error: no matching project found\n";
-    exit (1);
-  }
+{
+  package Changes::Gerrit;
+  sub name { return 'gerrit'; }
 
-  my @changes = ();
+  sub _process_query
+  {
+    my ($prjs, @json) = @_;
+    my @changes = ();
 
-  foreach my $query (keys %queries) {
-    print STDOUT "query: $query\n" if $verbose;
-    my @json = qx($query);
     foreach my $j (@json) {
-      my $q = decode_json($j);
+      my $q = ::decode_json($j);
       if (not defined $q) {
         push @$err, "gerrit did not return a JSON string but '$j'";
         next;
@@ -1399,8 +1366,114 @@ sub gerrit_query_changes
       next if not $q->{open};
       next if not $prjs->{$q->{project}};
 
-      push @changes, $q;
+      push @changes, {
+        src_type => 'gerrit',
+        id       => $q->{id},
+        prj      => $prjs->{$q->{project}},
+        project  => $q->{project},
+        branch   => $q->{branch},
+        src_ref  => $q->{currentPatchSet}{ref},
+        desc     => "change $q->{number}/$q->{currentPatchSet}{number}",
+        chg      => $q
+      };
     }
+
+    return @changes;
+  }
+
+  # per default register the gerrit change_source
+  sub changes
+  {
+    my ($class, $p, $chid) = @_;
+    my $uri = URI->new($p->{_remote}{fetch});
+    if ($uri->scheme eq 'ssh') {
+      my $query = 'ssh';
+      $query .= ' -p '.$uri->_port if defined $uri->_port;
+      $query .= ' -l '.$uri->userinfo if defined $uri->userinfo;
+      $query .= ' '.$uri->host;
+      $query .= " gerrit query --current-patch-set --format=JSON change:$chid";
+      return ($class . ': ' . $query => sub { return _process_query($_[0], qx($query)); });
+    }
+
+    push @$err, "unsupported remote ($uri) in $p->{name} for the download-id command";
+    return ();
+  }
+
+  sub upload
+  {
+    my ($class, $self, $dst_br, $src_br, $opts) = @_;
+    my @base_attr;
+    foreach my $c (map { split /,/ } @{$opts->{re}}) {
+      push @base_attr, "r=$c";
+    }
+
+    foreach my $c (map { split /,/ } @{$opts->{cc}}) {
+      push @base_attr, "cc=$c";
+    }
+
+    my $target = 'for';
+    $target = 'drafts' if ($opts->{draft});
+
+    my $dst_ref = catdir('refs', $target, $dst_br);
+    my @attrs;
+    my $r = $self->bare_git;
+    if ($opts->{topic}) {
+      push @attrs, "topic=$opts->{topic}";
+    } elsif ($opts->{t}) {
+      $src_br = $r->rev_parse('--abbrev-ref', $src_br) if $src_br eq 'HEAD';
+      push @attrs, "topic=$src_br";
+    }
+    push @attrs, @base_attr;
+    if (@attrs) {
+      $dst_ref .= "%".join(',', @attrs);
+    }
+
+    if ($opts->{'dry-run'}) {
+      print "$self->{path}: git push $self->{remote} $src_br:$dst_ref\n";
+    } else {
+      $self->loginfo($r->run('push', $self->{remote}, "$src_br:$dst_ref"));
+    }
+  }
+}
+
+add_change_source('Changes::Gerrit');
+
+sub get_change_source
+{
+  my $p = shift;
+  my $remote_type;
+  $remote_type = 'gerrit' if defined $p->{_remote}{review};
+  $remote_type = $p->{_remote}{type} if defined $p->{_remote}{type};
+  return undef unless defined $remote_type;
+  return $change_sources{$remote_type} if defined $change_sources{$remote_type};
+  $p->logerr("cannot handle repos of type: $remote_type");
+  return undef;
+}
+
+sub query_changes
+{
+  my ( $prjs, $opts, $recursion, @change_ids ) = @_;
+  my $branch = $opts->{branch};
+  my $verbose = $opts->{verbose};
+  my %queries = ();
+  foreach my $p (values %$prjs) {
+    foreach my $chid (@change_ids) {
+      my $cs = get_change_source($p);
+      %queries = (%queries, $cs->changes($p, $chid)) if defined $cs;
+    }
+  }
+
+  if (not %queries) {
+    print_errors();
+    print STDERR "error: no matching project found\n";
+    exit (1);
+  }
+
+  my @changes = ();
+
+  while (my ($query, $ex) = each %queries) {
+    print STDOUT "query: $query\n" if $verbose;
+    push @changes, $ex->($prjs);
   }
 
   print_errors(exit => 128);
@@ -1440,12 +1513,7 @@ sub gerrit_query_changes
     if (defined $get_change{$pn}{$id}) {
       push @$err, "$pn: $id is ambiguous";
     } else {
-      $get_change{$pn}{$id} = {
-        prj      => $prjs->{$pn},
-        change   => $c->{number},
-        patchset => $c->{currentPatchSet}{number},
-        chg      => $c
-      };
+      $get_change{$pn}{$id} = $c;
     }
   }
 
@@ -1525,7 +1593,7 @@ $commands->add('download-id' => {
 
     while (1) {
       my $changes =
-        gerrit_query_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
+        query_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
 
       return 1 unless defined $changes;
       return 0 unless %$changes;
