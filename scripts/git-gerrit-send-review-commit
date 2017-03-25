@@ -59,7 +59,7 @@ done
 git fetch $sh_gerrit_origin_name $sh_gerrit_branch_remote
 [ $? != 0 ] && exit 1
 
-local_upstream_hash=$(git rev-parse $sh_gerrit_local_upstream)
+local_hashes=($(git rev-parse HEAD $sh_gerrit_local_upstream))
 tmpdir=$(mktemp -d)
 
 trap "echo rm -fr $tmpdir; rm -fr $tmpdir" 0 1 2 3 15
@@ -79,7 +79,7 @@ for r in $additional_repos; do
   git remote add -f add_repo_$reponr $r
   reponr=$((reponr + 1))
 done
-git checkout -b remote_head $local_upstream_hash || die "git checkout failed"
+git checkout -b remote_head ${local_hashes[1]} || die "git checkout failed"
 git checkout -b picked_commits
 
 if [ -n "$onto_change_id" ]; then
@@ -87,10 +87,13 @@ if [ -n "$onto_change_id" ]; then
 fi
 
 for commit in "$@"; do
-  if [ -e "$commit" ]; then
+  if [ "$commit" != "." -a -e "$commit" ]; then
     echo "Applying: " $(git log --oneline -1 $commit)
     git am "$commit"
   else
+    if [ "$commit" = "." ]; then
+      commit=${local_hashes[0]}
+    fi
     echo "Picking: " $(git log --oneline -1 $commit)
     git cherry-pick $commit
   fi
