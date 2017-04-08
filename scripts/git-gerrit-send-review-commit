@@ -91,7 +91,7 @@ git checkout -b remote_head ${local_hashes[1]} || die "git checkout failed"
 git checkout -b picked_commits
 
 if [ -n "$onto_change_id" ]; then
-  ham download-id -p $onto_change_id
+  ham download-id -c $onto_change_id
 fi
 
 for commit in "$@"; do
