@@ -43,10 +43,14 @@ while true; do
        additional_repos="$additional_repos $1"
        shift
        ;;
-     --onto-change-id)
+    --onto-change-id)
        shift
        onto_change_id="$1"
        shift
+       ;;
+    --preserve-temp)
+       shift
+       preserve_temp=1
        ;;
     *)
       break
@@ -62,7 +66,11 @@ git fetch $sh_gerrit_origin_name $sh_gerrit_branch_remote
 local_hashes=($(git rev-parse HEAD $sh_gerrit_local_upstream))
 tmpdir=$(mktemp -d)
 
-trap "echo rm -fr $tmpdir; rm -fr $tmpdir" 0 1 2 3 15
+if [ -z "$preserve_temp" ]; then
+  trap "echo rm -fr $tmpdir; rm -fr $tmpdir" 0 1 2 3 15
+else
+  echo "Temporary directory is $tmpdir"
+fi
 
 config_email=$(git config user.email)
 config_ham_remote_revision=$(git config ham.origin.revision)
