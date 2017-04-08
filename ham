@@ -1925,8 +1925,10 @@ if (-r $user_config) {
     $commands->alias($alias, $t);
   }
 
-  foreach my $pl (split(/\s+/, $config{core}{plugins})) {
-    Hammer::Plugin->load_plugin($pl);
+  if (defined $config{core}{plugins}) {
+    foreach my $pl (split(/\s+/, $config{core}{plugins})) {
+      Hammer::Plugin->load_plugin($pl);
+    }
   }
 }
 
