@@ -15,3 +15,11 @@ in multiple repositories.
 
 To run ham on CentOS or RHEL, you need to install
 `perl-Archive-Zip` and `perl-parent` packages.
+
+
+## SSH Authentication
+
+ham updates many repositories at once in the background,
+typically using ssh as a secure transport. It is
+therefore required to use ssh-agent to allow for
+non-interactive ssh-authentication.
