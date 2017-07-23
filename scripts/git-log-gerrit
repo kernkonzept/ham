@@ -48,9 +48,9 @@ for h in $(git rev-list ${sh_gerrit_local_upstream}..); do
       exit 1
     fi
     #echo $query
-    number=${query#*\"number\":\"}
+    number=${query#*\"number\":}
     if [ "$number" != "$query" ]; then
-      number=${number%%\"*}
+      number=${number%%,*}
       stat=${query#*\"status\":\"}
       stat=${stat%%\"*}
     else
