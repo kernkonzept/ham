@@ -12,9 +12,7 @@ START_DIR=$(pwd)
 . /usr/lib/git-core/git-sh-i18n
 
 require_work_tree
-cd_to_toplevel
 
-otheropts=
 while test $# != 0
 do
   case "$1" in
@@ -23,19 +21,28 @@ do
       shift
       ;;
     -u|--upstream)
-       shift
-       sh_gerrit_local_upstream=$1
-       shift
-       ;;
-    *) otheropts="$otheropts $1"
-        shift
+      shift
+      sh_gerrit_local_upstream=$1
+      shift
+      ;;
+    --*)
+      otheroptions="$otheroptions $1"
+      shift
+      ;;
+    *) othernonoptions="$othernonoptions $1"
+      shift
       ;;
   esac
 done
 
+if [ -z "$logprettyopt" ]; then
+  echo "$0: Need a --pretty option to work with"
+  exit 1
+fi
+
 . $(dirname $(readlink -f $0))/git-sh-gerrit
 
-for h in $(git rev-list ${sh_gerrit_local_upstream}..); do
+for h in $(git rev-list ${sh_gerrit_local_upstream}.. -- $othernonoptions); do
   t=$(git show -s $h)
   id=${t#*Change-Id: }
   unset stat
@@ -66,5 +73,5 @@ for h in $(git rev-list ${sh_gerrit_local_upstream}..); do
   else
     l=${l/\%Z(*%Z)}
   fi
-  git log $otheropts "$l" $h^..$h
+  git log $otheroptions "$l" $h^..$h -- $othernonoptions
 done
