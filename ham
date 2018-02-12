@@ -987,7 +987,7 @@ sub cmd_forall
       s,\{PRJNAME\},$r->{name},g foreach @argv;
     }
     my $res = system(@argv);
-    return ($res) if $res and $opt->{'abort-on-errors'};
+    return $res >> 8 if $res and $opt->{'abort-on-errors'};
     return 0;
   } $opt->{__PREARGS};
 
