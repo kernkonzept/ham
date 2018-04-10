@@ -743,7 +743,7 @@ sub check_rev_list
   };
 
   $list_errors->("the following commits have no change ID", \@no_chid);
-  $list_errors->("the following commits have multiple chage IDs", \@multiple_chid);
+  $list_errors->("the following commits have multiple change IDs", \@multiple_chid);
   foreach my $id (@duplicate_chid) {
     $list_errors->("the following commits have the same change ID (you should squash them)",
                    $duplicate_chid{$id});
