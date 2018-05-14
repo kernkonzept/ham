@@ -666,7 +666,7 @@ $commands->add(init => {
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
     [ 'gerrit-url|g=s', 'URL of the gerrit server used for the manifest', { arg => '<gerrit url>' } ],
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
-    [ 'branch|br=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
+    [ 'branch|br|b=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
     $max_conns_option
   ],
