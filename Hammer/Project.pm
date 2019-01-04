@@ -381,7 +381,14 @@ sub sync_checkout
       return 1;
     }
 
-    $self->handle_output($self->git->command('rebase', $remote_ref_n));
+    my $o;
+    if (defined $opts->{upstream}) {
+      $o = $self->git->command("reset", "--hard", $remote_ref_n);
+    } else {
+      $o = $self->git->command('rebase', $remote_ref_n);
+    }
+
+    $self->handle_output($o);
     return 1;
   }
 
