@@ -542,9 +542,7 @@ sub checkout
     return 128;
   }
 
-  # disable this auto append of '--' as this seems to break git checkout
-  # with a remote branch name:
-  # push @args, '--' unless grep /^--$/, @args;
+  push @args, '--' unless grep /^--$/, @args;
 
   my $head = $git->rev_parse('--abbrev-ref', 'HEAD');
   return if defined $head and $head eq $$branch and @args == 1;
