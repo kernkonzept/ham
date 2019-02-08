@@ -29,6 +29,8 @@ my $prog = 'ham';
 
 my $user_config = File::Spec->catdir($ENV{HOME}, ".hamconfig");
 my %config = ();
+my $touched_manifest = 0;
+my %manifest_project_names = ();
 
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
@@ -1452,6 +1454,21 @@ sub fetch_all_changes
   return 0;
 }
 
+# ham sync if manifests changed during download-id --sync
+sub download_id_sync
+{
+  my ($touched_manifest, $opts) = @_;
+
+  if ($touched_manifest and defined $opts->{'sync'}) {
+    my %sync_options = map { $_ => 1 } split(',', $opts->{'sync'});
+    print STDOUT "Changed manifest: trigger ham sync ".
+                 join(' ', map { "--$_" } keys %sync_options)."\n";
+    return cmd_sync(\%sync_options, 'ham sync', undef);
+  }
+
+  return 0;
+}
+
 ###### download-id ####################################
 $commands->add('download-id' => {
   syn => [
@@ -1468,6 +1485,11 @@ $commands->add('download-id' => {
     [ 'dry-run|n',         q|do not checkout anything| ],
     [ 'verbose|v',         q|enable verbose mode| ],
     [ 'print-footers',     q|Print commit message footers for the downloaded changes| ],
+    [ 'sync:s',            q|Run ham sync when manifest projects were changed.
+                             Optionally it allows to specify comma-separated
+                             arguments which will become options to ham sync, e.g.,
+                             --sync=cleanup,force-local-update
+                             will call ham sync --cleanup --force-local-update.| ],
     $max_conns_option
  ],
   desc => q|Download all changes for all projects with the given change ID (Change-Id)
@@ -1492,7 +1514,7 @@ $commands->add('download-id' => {
         query_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
 
       return 1 unless defined $changes;
-      return 0 unless %$changes;
+      return download_id_sync($touched_manifest, $opts) unless %$changes;
 
       return 0 if $opts->{'dry-run'};
 
@@ -1505,6 +1527,8 @@ $commands->add('download-id' => {
 
       %new_change_ids = ();
 
+      $touched_manifest = 1 if grep { $manifest_project_names{$_} } keys %$changes;
+
       foreach my $prj_name (keys %$changes) {
         my $p = $all_prjs->{$prj_name};
         # FIXME: should use remote revision here: refs/remotes/<xx>/$p->{revision}
@@ -1515,6 +1539,7 @@ $commands->add('download-id' => {
         chomp (@revs);
 
         if (scalar @revs && defined $revs[0] && (not $recurse)) {
+          $touched_manifest = 1 if $manifest_project_names{$prj_name};
           print "downloaded change HEAD: $prj_name: $revs[0]\n";
           if ($opts->{'print-footers'}) {
             my $cmd = $p->git->command('cat-file', '-p', $revs[0]);
@@ -1540,7 +1565,7 @@ $commands->add('download-id' => {
       if (%new_change_ids) {
         if (not $opts->{'recursive-pull'}) {
           print "skip downloading additional required changes from other projects\n";
-          return 0;
+          return download_id_sync($touched_manifest, $opts);
         }
         $all_prjs = filter_projects($all_prjs, [ '!', (keys %$changes) ]);
         $recurse = 1;
@@ -1549,11 +1574,11 @@ $commands->add('download-id' => {
         print "\ndownload more required changes\n";
       } else {
         print_errors(exit => 128);
-        return 0;
+        return download_id_sync($touched_manifest, $opts);
       }
     }
 
-    return 0;
+    return download_id_sync($touched_manifest, $opts);
   }
 });
 
