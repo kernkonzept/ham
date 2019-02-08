@@ -216,6 +216,7 @@ sub ham_file
 
 # path to the manifest XML file
 sub repo_manifest() { ham_file('manifest.xml'); }
+sub local_manifest_index() { ham_file('local_manifests_index.xml'); }
 # path to the local ham config file
 sub repo_config() { ham_file('config'); }
 
@@ -309,6 +310,29 @@ sub make_manifest_prj
   };
   my $r = $opts{root};
   $r = repo_base() unless $r;
+  return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
+}
+
+# create a project for a local manifest repository
+sub make_local_manifest_prj
+{
+  my ( $lm ) = @_;
+
+  my ($url, $project, $branch, $file, $symlink, $repo_id) =
+      @{$lm}{qw(url project branch file symlink repo_id)};
+
+  my $p = {
+    name        => $project,
+    path        => "$repo_subdir/local_manifests_repos/$repo_id",
+    remote      => 'origin',
+    _remote     => { name => 'origin', fetch => $url, review => $url },
+    url         => $url,
+    revision    => $branch,
+    is_manifest => 1,
+    keep        => 1,
+  };
+
+  my $r = realpath('.');
   return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
 }
 
@@ -487,6 +511,16 @@ sub load_projects
   }
 
   my $manifest = load_xml_manifest(repo_manifest());
+
+  # read patchable (gerrit) manifest projects from local_manifest_index
+  my $lm_index = local_manifest_index();
+  if (-e $lm_index) {
+    my $f = File::Spec->catfile($lm_index);
+    my $local_manifest_index = load_xml_manifest($lm_index);
+    $manifest_project_names{$_} = 1 foreach keys %{$local_manifest_index->{project}};
+    add_manifest($f, $manifest, $local_manifest_index);
+  }
+
   my $local_manifests_dir = catdir($ham_dir, "local_manifests");
   if (-d $local_manifests_dir) {
     opendir(my $lm, $local_manifests_dir)
@@ -671,6 +705,14 @@ $commands->add(init => {
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
     [ 'branch|br|b=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
+    [ 'local-manifest|l=s@',
+      qq|Set up local manifest entry (can be repeated for
+        multiple entries). A local manifest descriptor consists of
+        comma-separated entries for giturl (or projectname), filename,
+        symlinkname, and a git branch name, where branch defaults to
+        manifest branch, symlink defaults to an enumerated variant of
+        filename, and filename defaults to default.xml.|,
+      { arg => '<url>[,<filename>[,<symlink>[,<branch>]]]' } ],
     $max_conns_option
   ],
   desc => "initialize $prog meta project in the curent directory"
@@ -696,6 +738,111 @@ sub split_manifest_url
   return $manifest_info;
 }
 
+sub split_local_manifest_descriptors
+{
+  my $opts = shift;
+
+  my @local_manifest_info = ();
+
+  my $i = 1;
+  foreach my $opt (@{$opts->{'local-manifest'}}) {
+
+    # entry parts with defaults
+    my ($raw_url, $file, $symlink, $branch) = split(',', $opt);
+
+    # local_manifest urls can be provided just as project name or as full url
+    my $project  = $raw_url;
+    my $url      = $opts->{'gerrit-url'};
+    if ($raw_url =~ m|[^-./\w]|) { # a real url
+        my $info = split_manifest_url({ url => $raw_url });
+        $project = $info->{project};
+        $url     = $info->{url};
+    }
+
+    # defaults
+    $branch  ||= $opts->{branch};
+    $file    ||= 'default.xml';
+    $symlink ||= sprintf('%02d-%s', $i, $file);
+
+    # unique shortname for git repo subdir
+    my $repo_id = "$url~$project~$branch";
+    $repo_id =~ s/[^-.\w]/~/g;
+    $repo_id =~ s/[^-.\w]/~/g;
+    $repo_id =~ s/~+/~/g;
+
+    # result entry
+    push @local_manifest_info, {
+      raw_url => $raw_url,
+      url     => $url,
+      project => $project,
+      branch  => $branch,
+      file    => $file,
+      symlink => $symlink,
+      repo_id => $repo_id,
+    };
+
+    $i++;
+  }
+
+  return \@local_manifest_info;
+}
+
+sub init_local_manifests
+{
+  my ($opt, $local_manifest_info) = @_;
+
+  # set up local_manifest subdir with symlinks to specified files
+  if (@$local_manifest_info) {
+
+    print STDOUT "Preparing local manifests: " .
+                 join(', ', map { $_->{symlink} } @$local_manifest_info) . "\n";
+
+    make_path("$repo_subdir/local_manifests");
+    make_path("$repo_subdir/local_manifests_repos");
+
+    my @local_manifest_index_entries = ();
+    my @local_manifest_projects = map { make_local_manifest_prj($_) } @$local_manifest_info;
+    my $q = Hammer::Process_queue->new(max => max_conns($opt));
+
+    for (my $i = 0; $i < @local_manifest_projects; $i++) {
+      my $lm_prj = $local_manifest_projects[$i];
+      $q->queue(sub { $lm_prj->sync() });
+    }
+    $q->work;
+
+    for (my $i = 0; $i < @local_manifest_projects; $i++) {
+      my $lm_prj = $local_manifest_projects[$i];
+      $lm_prj->prepare();
+      $q->queue(sub { $lm_prj->fetch() });
+    }
+    $q->work;
+
+    for (my $i = 0; $i < @local_manifest_projects; $i++) {
+      my $lm_prj  = $local_manifest_projects[$i];
+      my $lm_info = $local_manifest_info->[$i];
+      $lm_prj->checkout($lm_info);
+      symlink("../local_manifests_repos/$lm_info->{repo_id}/$lm_info->{file}",
+              "$repo_subdir/local_manifests/$lm_info->{symlink}");
+
+      # register local_manifests itself as projects when coming from gerrit
+      # (and make sure they stay at their initial branch even on ham sync)
+      push @local_manifest_index_entries,
+        qq|  <project name="$lm_info->{project}" path="$repo_subdir/local_manifests_repos/$lm_info->{repo_id}" revision="$lm_info->{branch}" />\n|
+          if $lm_info->{raw_url} eq $lm_info->{project};
+    }
+
+    if (@local_manifest_index_entries) {
+      # write local_manifest_index
+      open my $LMI, '>', local_manifest_index()
+        or die "cannot open ".local_manifest_index().": $!";
+      print $LMI qq|<?xml version="1.0" encoding="UTF-8"?>\n<!-- list of patchable (i.e., gerrit) projects -->\n<manifest>\n|;
+      print $LMI $_ foreach @local_manifest_index_entries;
+      print $LMI qq|</manifest>\n|;
+      close $LMI;
+    }
+  }
+}
+
 sub cmd_init
 {
   my ($opt, $command, $cmd) = @_;
@@ -703,6 +850,7 @@ sub cmd_init
   my $repodir = get_repo_dir(1);
 
   my $manifest_info = split_manifest_url($opt);
+  my $local_manifest_info = split_local_manifest_descriptors($opt);
 
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
     # remove old url file
@@ -783,6 +931,9 @@ sub cmd_init
     open my $u, ">$repo_subdir/manifests_json";
     print $u encode_json($manifest_info), "\n";
     close $u;
+
+    init_local_manifests($opt, $local_manifest_info);
+
   } else {
     # use a local file as manifest and copy it
     my $repo_dat = repo_manifest();
