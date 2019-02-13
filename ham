@@ -529,6 +529,7 @@ sub load_projects
     $r->{review} =~ s|^(.*)/$|$1|;
   }
   $projects->{$manifest_prj->{name}} = $manifest_prj;
+  $manifest_project_names{$manifest_prj->{name}} = 1;
   return $projects;
 }
 
