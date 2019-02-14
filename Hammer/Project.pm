@@ -207,7 +207,7 @@ sub store_to_attic
   my @files = map { catdir($base, $_); } split("\0", $git->run('ls-files', '-z'));
   my @dirs = map { catdir($base, $_); }
              sort { $b cmp $a }
-             split("\0", $git->run('ls-tree', '-d', '--name-only', '-z', '-r', 'HEAD'));
+             split("\0", $git->run('ls-tree', '-d', '--name-only', '-z', '-r', 'HEAD', { fatal => [-128] }));
   push @dirs, $base;
   $self->loginfo("moving to attic: ".$self->attic_path);
   return 0 unless File::Copy::move($self->gitdir, $self->attic_path);
