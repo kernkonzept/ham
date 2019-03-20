@@ -595,7 +595,7 @@ sub add_to_alternates
 
   my $ref = catdir($reference_basepath, $self->{path}, '.git', 'objects');
   unless (-d $ref) {
-    $self->loginfo("referenced directoy '$ref' does not exist, ignoring");
+    $self->loginfo("referenced directory '$ref' does not exist, ignoring");
     return 0;
   }
 
