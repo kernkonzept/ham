@@ -1162,6 +1162,11 @@ $commands->add(checkout => {
     [ 'delete-branch-before-checkout', q|Delete a local branch of the same name
                                          before checking out that branch to
                                          ensure a clean upstream state.| ],
+    [ 'sync:s',            q|Run ham sync when manifest projects were changed.
+                             Optionally it allows to specify comma-separated
+                             arguments which will become options to ham sync, e.g.,
+                             --sync=cleanup,force-local-update
+                             will call ham sync --cleanup --force-local-update.| ],
   ],
   desc => 'checkout <branch> in all projects'
 });
@@ -1176,9 +1181,13 @@ sub cmd_checkout
   push @args, '--detach' if defined $opts->{detach};
   push @args, '-b', $opts->{b} if defined $opts->{b};
   push @args, $branch;
-  return foreach_prj {
+  my $manifest_changed = 0;
+  my $res = foreach_prj {
     my $p = $_;
-    return 0 if not $opts->{'include-manifest'} and $p->{is_manifest};
+    if ($p->{is_manifest}) {
+      return 0 if not $opts->{'include-manifest'};
+      $manifest_changed = 1;
+    }
 
     if ($opts->{'delete-branch-before-checkout'}) {
       my $x = $p->git($p->{_stderr})->run('branch', '-D', $branch, { quiet => 1, fatal => [-128 ]});
@@ -1188,6 +1197,9 @@ sub cmd_checkout
     return $r if $r and $abt;
     return 0;
   };
+
+  return $res if $res;
+  return download_id_sync($manifest_changed, $opts);
 }
 
 
