@@ -191,12 +191,16 @@ sub bare_git
 #
 sub store_to_attic
 {
-  my $self = shift;
+  my ($self, $force) = @_;
   return undef if not $self->is_git_repo;
   my $s = $self->status;
   if ($s->is_dirty) {
-    $self->logerr("contains changes, not moving to attic");
-    return 0;
+    if ($force) {
+      $self->loginfo("contains changes, forced move");
+    } else {
+      $self->logerr("contains changes, not moving to attic");
+      return 0;
+    }
   }
 
   my $attic_base = $self->attic_base_path;

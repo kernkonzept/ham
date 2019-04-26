@@ -578,15 +578,15 @@ sub project_for_rel_path
 
 sub cleanup_stale_projects
 {
-  my ($projects, $move_to_attic) = @_;
+  my ($projects, $opts) = @_;
   my $stale_p = get_downloaded_projects();
   my %all_prjs = ( %$projects );
   foreach my $sp (sort { $b->{path} cmp $a->{path} } @$stale_p) {
     my $n = $sp->{name};
     my $p = $projects->{$n};
-    if ((not $p) and $move_to_attic) {
+    if ((not $p) and $opts->{cleanup}) {
       my $x = Hammer::Project->new($sp, root => repo_base(), stderr => $err, stdout => $info);
-      print_errors(exit => 1) unless $x->store_to_attic;
+      print_errors(exit => 1) unless $x->store_to_attic($opts->{upstream});
       next;
     }
 
@@ -991,7 +991,7 @@ sub cmd_sync
   place_commit_msg_hook();
 
   my $projects = load_projects();
-  cleanup_stale_projects($projects, $opts->{cleanup});
+  cleanup_stale_projects($projects, $opts);
   $projects = filter_projects($projects, \@ARGV);
   $projects = [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 
