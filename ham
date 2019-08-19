@@ -1783,7 +1783,7 @@ $commands->add(diff => {
 ###### rev-list ####################################
 $commands->add('rev-list' => {
   syn => [
-    '%c %o [<revisions>...] -- [<project>...]',
+    '%c %o <revisions>... -- [<project>...]',
     { extra_args => 1, config => [ 'pass_through' ] },
   ],
   desc => qq|Print a git rev-list for each project.\r
