@@ -1543,7 +1543,7 @@ sub query_changes
   if (not @changes) {
     return {} if $recursion;
     print STDERR "no changes for id ".join(' ',@change_ids)." found\n";
-    return {};
+    return undef;
   }
 
   my @used_changes = grep { exists $prjs->{$_->{project}} } @changes;
