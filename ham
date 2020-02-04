@@ -791,6 +791,8 @@ sub init_local_manifests
 {
   my ($opt, $local_manifest_info) = @_;
 
+  my $error = 0;
+
   # set up local_manifest subdir with symlinks to specified files
   if (@$local_manifest_info) {
 
@@ -821,6 +823,16 @@ sub init_local_manifests
       my $lm_prj  = $local_manifest_projects[$i];
       my $lm_info = $local_manifest_info->[$i];
       $lm_prj->checkout($lm_info);
+
+      if (! -e "$repo_subdir/local_manifests_repos/$lm_info->{repo_id}/$lm_info->{file}")
+        {
+          print STDERR "Warning: Local manifest $lm_info->{file} could not be found.\n";
+          push @local_manifest_index_entries,
+            qq|  <!-- Missing $lm_info->{repo_id}/$lm_info->{file} -->\n|;
+          $error = 1;
+          next;
+        }
+
       symlink("../local_manifests_repos/$lm_info->{repo_id}/$lm_info->{file}",
               "$repo_subdir/local_manifests/$lm_info->{symlink}");
 
@@ -841,6 +853,7 @@ sub init_local_manifests
       close $LMI;
     }
   }
+  exit 1 if $error;
 }
 
 sub cmd_init
