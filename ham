@@ -1250,9 +1250,17 @@ $commands->add(info => {
 sub cmd_info
 {
   select pager;
+  my $missing = 0;
   foreach_prj {
     my $p = $_;
     my $g = $p->git;
+
+    if (! defined($g) ) {
+      print "$p->{name}: ".colored("missing", "red")."\n";
+      $missing = 1;
+      return 0;
+    }
+
     my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
     print colored("$p->{name}: in $p->{path}\n", 'bold');
     my $remote_branch = $p->{revision};
@@ -1270,7 +1278,7 @@ sub cmd_info
     0;
   };
 
-  0;
+  return $missing ? 1 : 0;
 }
 
 
