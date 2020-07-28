@@ -1122,7 +1122,8 @@ $commands->add(forall => {
                              Variables are:
                                {UPSTREAM}: The upstream revision.
                                {REMOTE}:   The name of the remote as defined in the manifest.
-                               {PRJNAME}:  The project name as used on the server.| ],
+                               {PRJNAME}:  The project name as used on the server.
+                               {PRJPATH}:  The project path as defined in the manifest.| ],
     [ 'include-manifest|m', 'Also include the manifest project'],
   ],
   desc => 'run <cmd> for all projects'
@@ -1152,6 +1153,7 @@ sub cmd_forall
       s,\{UPSTREAM\},$upstream,g foreach @argv;
       s,\{REMOTE\},$remote_name,g foreach @argv;
       s,\{PRJNAME\},$r->{name},g foreach @argv;
+      s,\{PRJPATH\},$r->{path},g foreach @argv;
     }
     my $res = system(@argv);
     return $res >> 8 if $res and $opt->{'abort-on-errors'};
