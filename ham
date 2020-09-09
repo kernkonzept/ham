@@ -1718,10 +1718,9 @@ $commands->add('download-id' => {
 
       foreach my $prj_name (keys %$changes) {
         my $p = $all_prjs->{$prj_name};
-        # FIXME: should use remote revision here: refs/remotes/<xx>/$p->{revision}
         next unless $p->{revision};
         my @revs = $p->git->run('rev-list', '--max-count', '100', '--sparse',
-                                '^'.$p->{revision}, 'HEAD', '--not', '--remotes',
+                                'HEAD', '--not', '--remotes=*/'.$p->{revision},
                                 '--');
         chomp (@revs);
 
