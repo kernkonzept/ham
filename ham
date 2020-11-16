@@ -986,6 +986,7 @@ $commands->add(sync => {
                        the local repositories unusable.| ],
     [ 'force-local-update', q|Force update of local projects although
                               updates indicate no changes.| ],
+    [ 'exclude-manifest', q|Do not sync manifest repositories.| ],
     $max_conns_option
   ],
   desc => 'checkout/update all projects'
@@ -997,9 +998,11 @@ sub cmd_sync
   # update manifest repo, if there is any
   my $manifest = manifest_prj();
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
-  $q->queue(sub { $manifest->sync($opts); });
-  $q->work;
-  $manifest->prepare($opts);
+  unless ($opts->{'exclude-manifest'}) {
+    $q->queue(sub { $manifest->sync($opts); });
+    $q->work;
+    $manifest->prepare($opts);
+  }
 
   place_commit_msg_hook();
 
@@ -1009,6 +1012,7 @@ sub cmd_sync
   $projects = [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 
   foreach my $r (@$projects) {
+    next if $opts->{'exclude-manifest'} && $r->{is_manifest};
     $q->queue(sub { $r->sync($opts); });
   }
   $q->work;
@@ -1030,6 +1034,7 @@ sub cmd_sync
                  " projects:\n";
 
     foreach (@$projects) {
+      next if $opts->{'exclude-manifest'} && $_->{is_manifest};
       next unless $_->{remote_has_updates} || $proj_with_updates == -1;
       $_->prepare($opts);
     }
