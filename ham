@@ -1127,6 +1127,8 @@ $commands->add(forall => {
                              Variables are:
                                {UPSTREAM}: The upstream revision.
                                {REMOTE}:   The name of the remote as defined in the manifest.
+                               {FETCHURL}: The URL used for the remote repository.
+                               {GITHEAD}: Substitute the SHA1 of the current git HEAD.
                                {PRJNAME}:  The project name as used on the server.
                                {PRJPATH}:  The project path as defined in the manifest.| ],
     [ 'include-manifest|m', 'Also include the manifest project'],
@@ -1157,8 +1159,10 @@ sub cmd_forall
       my $remote_name = $r->{_remote}->{name};
       s,\{UPSTREAM\},$upstream,g foreach @argv;
       s,\{REMOTE\},$remote_name,g foreach @argv;
+      s,\{FETCHURL\},$r->get_fetch_url(),ge foreach @argv;
       s,\{PRJNAME\},$r->{name},g foreach @argv;
       s,\{PRJPATH\},$r->{path},g foreach @argv;
+      s,\{GITHEAD\},$r->git_head(),ge foreach @argv;
     }
     my $res = system(@argv);
     return $res >> 8 if $res and $opt->{'abort-on-errors'};

@@ -325,6 +325,14 @@ sub handle_output
   }
 }
 
+sub git_head
+{
+  my ($self) = @_;
+  my $git = $self->git($self->{_stderr});
+  return undef unless defined $git;
+  return $git->rev_parse('HEAD');
+}
+
 ## do a conditional checkout for sync
 sub sync_checkout
 {
