@@ -1665,6 +1665,19 @@ sub download_id_sync
   return 0;
 }
 
+sub print_download_trace
+{
+  my $t = shift;
+
+  foreach my $op (@$t) {
+    my $p = $op->{prj};
+    my $o = 'checkout';
+    $o = 'cherry-pick' if $op->{opts}{'cherry-pick'};
+    $o = 'merge' if $op->{opts}{pull};
+    print "log: " . $p->{name} . ": " . $p->{path} . ": " . $p->get_fetch_url() .": $o $op->{rev}\n";
+  }
+}
+
 ###### download-id ####################################
 $commands->add('download-id' => {
   syn => [
@@ -1705,12 +1718,17 @@ $commands->add('download-id' => {
       $p->{current_head} = $head;
     }
 
+    my @trace;
+
     while (1) {
       my $changes =
         query_changes($all_prjs, $opts, $recurse, keys %new_change_ids);
 
       return 1 unless defined $changes;
-      return download_id_sync($touched_manifest, $opts) unless %$changes;
+      unless (%$changes) {
+        print_download_trace(\@trace);
+        return download_id_sync($touched_manifest, $opts);
+      }
 
       return 0 if $opts->{'dry-run'};
 
@@ -1735,6 +1753,7 @@ $commands->add('download-id' => {
 
         if (scalar @revs && defined $revs[0] && (not $recurse)) {
           $touched_manifest = 1 if $manifest_project_names{$prj_name};
+          push @trace, {prj => $p, prj_name => $prj_name, opts => { %$opts }, rev => $revs[0]};
           print "downloaded change HEAD: $prj_name: $revs[0]\n";
           if ($opts->{'print-footers'}) {
             my $cmd = $p->git->command('cat-file', '-p', $revs[0]);
@@ -1751,6 +1770,11 @@ $commands->add('download-id' => {
           }
         }
 
+        if (scalar @revs && defined $revs[0] && $recurse) {
+          push @trace, {prj => $p, prj_name => $prj_name, opts => { %$opts }, rev => $revs[0]};
+          print "merged dependency change HEAD: $prj_name: $revs[0]\n";
+        }
+
         my $cmd = $p->git->command('cat-file', '--batch', { input => join("\n", @revs)."\n" });
         foreach my $chid (grep { s/^(?:Change-Id|Requires-Change-Id):\s+(\S+)/$1/ } $cmd->final_output) {
           $new_change_ids{$chid} = 1 if not defined $done_change_ids{$chid};
@@ -1760,6 +1784,7 @@ $commands->add('download-id' => {
       if (%new_change_ids) {
         if (not $opts->{'recursive-pull'}) {
           print "skip downloading additional required changes from other projects\n";
+          print_download_trace(\@trace);
           return download_id_sync($touched_manifest, $opts);
         }
         $all_prjs = filter_projects($all_prjs, [ '!', (keys %$changes) ]);
@@ -1769,6 +1794,7 @@ $commands->add('download-id' => {
         print "\ndownload more required changes\n";
       } else {
         print_errors(exit => 128);
+        print_download_trace(\@trace);
         return download_id_sync($touched_manifest, $opts);
       }
     }
