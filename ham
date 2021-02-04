@@ -302,7 +302,12 @@ sub make_manifest_prj
     name     => $opts{project},
     path     => "$repo_subdir/manifests",
     remote   => 'origin',
-    _remote  => { name => 'origin', fetch => $opts{url}, review => $opts{url} },
+    _remote  => {
+      name   => 'origin',
+      type   => $opts{type},
+      fetch  => $opts{url},
+      review => $opts{url},
+    },
     url      => $opts{url},
     revision => $opts{revision},
     is_manifest => 1,
@@ -705,6 +710,7 @@ $commands->add(init => {
     [ 'gerrit-url|g=s', 'URL of the gerrit server used for the manifest', { arg => '<gerrit url>' } ],
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
     [ 'branch|br|b=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
+    [ 'type=s', 'Set the type of the manifest repository management system (default gerrit)', { arg => '<repo type>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
     [ 'local-manifest|l=s@',
       qq|Set up local manifest entry (can be repeated for
@@ -724,7 +730,10 @@ sub split_manifest_url
 {
   my $opt = shift;
 
-  my $manifest_info = { };
+  my $manifest_info = {
+    revision => $opt->{branch},
+    type     => $opt->{type},
+  };
 
   if (defined $opt->{url}) {
     ($manifest_info->{project} = $opt->{url}) =~ s|^.*/||g;
@@ -733,8 +742,6 @@ sub split_manifest_url
     $manifest_info->{project} = $opt->{project};
     ($manifest_info->{url} = $opt->{'gerrit-url'}) =~ s,/*$,,;
   }
-
-  $manifest_info->{revision} = $opt->{branch} if defined $opt->{branch};
 
   return $manifest_info;
 }
