@@ -291,6 +291,7 @@ sub init
   Git::Repository->run( init => $self->abs_path, { env => { LC_ALL => 'C' } } );
   $self->{_bare_repo} = $self->{_repo} = Git::Repository->new(work_tree => $self->abs_path,
                                                               { env => { LC_ALL => 'C' } });
+  $self->{remote_has_updates} = 1;
 }
 
 sub logerr
@@ -428,39 +429,48 @@ sub sync_checkout
   return 1;
 }
 
+sub add_changeid_hook
+{
+  my ($self, $opts) = @_;
+  my $git = $self->bare_git;
+
+  my $remote = $self->{_remote};
+  unless (defined $remote->{review} and $remote->{review} ne '') {
+    $git->run(config => '--bool', 'gerrit.createChangeId', 'false');
+    return;
+  }
+
+  my $hooks = $git->git_dir.'/hooks';
+  my $hook_path = catfile($hooks, "commit-msg");
+  if (not -e $hook_path) {
+    make_path($hooks) unless -d $hooks;
+    my $base = $self->{_root};
+    if (index($hooks, $base) != 0) {
+      $self->logerr("$hooks is not within our repo at $base");
+      return 0;
+    }
+
+    my $rel_hooks = $self->ham_dir_rel(substr($hooks, length($base)),
+                                       '.ham/hooks/commit-msg');
+    unlink $hook_path if -l $hook_path && (not -e $hook_path);
+    symlink($rel_hooks, $hook_path)
+      or $self->logerr("fatal: link $hooks/commit-msg: $!");
+  }
+
+  $git->run(config => '--bool', 'gerrit.createChangeId', 'true');
+  $git->run(config => '--bool',
+            'remote.'.$self->{_remote}->{name}.'.ham', 'true');
+  $git->run(config => '--replace-all',
+            'ham.'.$self->{_remote}->{name}.'.revision', $self->{revision});
+}
+
 ## prepare the git repo after sync, incl. checkout
 sub prepare
 {
   my ($self, $opts) = @_;
-  return 0 unless $self->sync_checkout($opts);
-  my $git = $self->bare_git;
-  if (defined $self->{_remote}->{review} and $self->{_remote}->{review} ne '') {
-    my $hooks = $git->git_dir.'/hooks';
-    my $hook_path = catfile($hooks, "commit-msg");
-    if (not -e $hook_path) {
-      make_path($hooks) unless -d $hooks;
-      my $base = $self->{_root};
-      if (index($hooks, $base) != 0) {
-        $self->logerr("$hooks is not within our repo at $base");
-        return 0;
-      }
-
-      my $rel_hooks = $self->ham_dir_rel(substr($hooks, length($base)),
-                                         '.ham/hooks/commit-msg');
-      unlink $hook_path if -l $hook_path && (not -e $hook_path);
-      symlink($rel_hooks, $hook_path)
-        or $self->logerr("fatal: link $hooks/commit-msg: $!");
-    }
-
-    $git->run(config => '--bool', 'gerrit.createChangeId', 'true');
-    $git->run(config => '--bool',
-              'remote.'.$self->{_remote}->{name}.'.ham', 'true');
-    $git->run(config => '--replace-all',
-              'ham.'.$self->{_remote}->{name}.'.revision', $self->{revision});
-  } else {
-    $git->run(config => '--bool', 'gerrit.createChangeId', 'false');
-  }
-  return 1;
+  my $res = $self->sync_checkout($opts);
+  $self->add_changeid_hook();
+  return $res;
 }
 
 my $trace = 0;
@@ -783,6 +793,7 @@ sub check_for_upload
 
   my $remote = $prj->{remote};
   $dst_br = $prj->{revision} unless defined $dst_br;
+  $dst_br = 'master' unless defined $dst_br;
   my $rem_br = "$remote/$dst_br";
   my $dst_rev = $r->rev_parse($rem_br);
 
