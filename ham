@@ -1430,6 +1430,7 @@ sub cmd_upload
     my $cs = Hammer::Plugin->change_source($prj);
     $cs->upload($prj, $dst_br, $src_br, $opts) if defined $cs;
   }
+  print_errors(exit => 128);
 
   return 0;
 }
