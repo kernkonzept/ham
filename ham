@@ -517,6 +517,7 @@ sub load_projects
   if (-e $lm_index) {
     my $f = File::Spec->catfile($lm_index);
     my $local_manifest_index = load_xml_manifest($lm_index);
+    $_->{is_manifest} = 1 foreach values %{$local_manifest_index->{project}};
     $manifest_project_names{$_} = 1 foreach keys %{$local_manifest_index->{project}};
     add_manifest($f, $manifest, $local_manifest_index);
   }
