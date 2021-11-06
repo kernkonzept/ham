@@ -2017,6 +2017,7 @@ $commands->add('commit' => {
     foreach_prj {
       my $prj = $_;
       my $s = $prj->status;
+      die "Project $prj->{path} inconsistent, please fix" if not defined $s;
       return 0 if not $s->is_dirty;
       my @i = $s->pretty_index($prj->{path});
       push @index, @i;
