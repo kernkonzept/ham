@@ -99,6 +99,9 @@ sub upload
   foreach my $hashtag (map { split /,/ } @{$opts->{hashtag}}) {
     push @attrs, "t=$hashtag";
   }
+  if ($opts->{notify}) {
+    push @attrs, "notify=" . uc($opts->{notify});
+  }
   push @attrs, @base_attr;
   if (@attrs) {
     $dst_ref .= "%".join(',', @attrs);
