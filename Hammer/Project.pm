@@ -586,6 +586,11 @@ sub checkout
     return 128;
   }
 
+  if (grep /pathspec '\.' did not match any file\(s\) known to git/, @cerr) {
+    # this happens in empty repos
+    return 128;
+  }
+
   if (@cerr) {
     chomp(@cerr);
     $r->logerr(@cerr);
