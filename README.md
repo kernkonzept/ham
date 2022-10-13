@@ -17,10 +17,15 @@ On Debian-based systems, install:
 
     $ apt-get install libgit-repository-perl libxml-mini-perl liburi-perl
 
-On RPM-based systems such as Fedora or RHEL you need to install:
+On Fedora or RHEL you need to install:
 
     $ dnf install perl-Git-Repository-Plugin-AUTOLOAD perl-URI perl-CPAN perl-Test perl-File-pushd
     $ cpan install XML::Mini::Document
+
+On openSUSE or SLE you need to install:
+
+    $ zypper in git make perl perl-base perl-File-pushd perl-Git perl-Pod-Coverage-TrustPod perl-Test-Base perl-Test-Pod perl-Test-Pod-Coverage perl-URI perl-YAML
+    $ cpan install XML::Mini::Document Git::Repository
 
 On Arch Linux, these packages need to be installed from the AUR by a method of your choice:
 
