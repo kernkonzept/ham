@@ -1,4 +1,5 @@
 #! /usr/bin/env perl
+# SPDX-License-Identifier: BSD-2-Clause
 
 use strict;
 use warnings;

@@ -1,0 +1,25 @@
+## This file states the license of this package and possibly its subpackages
+## in machine and human readable format. The PackageName refers to the package
+## whose license is defined by PackageLicenseConcluded.
+## For more information about this file format visit the SPDX website at
+## https://spdx.org
+
+SPDXVersion: SPDX-2.3
+DataLicense: CC0-1.0
+SPDXID: SPDXRef-DOCUMENT
+DocumentNamespace: spdx:kernkonzept/ham-dc3a54a2-70d2-423a-bb8d-b1d1881181f2
+DocumentName: LICENSE.spdx
+Created: 2022-10-25T12:00:00Z
+
+Creator: Organization: Kernkonzept GmbH (info@kernkonzept.com)
+
+## Package Information
+PackageName: ham
+SPDXID: SPDXRef-package-ham
+PackageSupplier: Organization: Kernkonzept GmbH (info@kernkonzept.com)
+PackageOriginator: Organization: Kernkonzept GmbH (info@kernkonzept.com)
+PackageDownloadLocation: git+https://github.com/kernkonzept/ham
+PackageLicenseDeclared: BSD-2-Clause
+FilesAnalyzed: false
+PackageCopyrightText: <text>Copyright 2012-2022 Alexander Warg
+                                                Adam Lackorzynski</text>

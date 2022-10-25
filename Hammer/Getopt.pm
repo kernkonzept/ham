@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+
 package Hammer::Getopt;
 
 use strict;

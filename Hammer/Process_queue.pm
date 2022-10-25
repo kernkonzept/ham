@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+
 package Hammer::Process_queue;
 
 use strict;

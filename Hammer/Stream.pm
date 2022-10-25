@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+
 ## stream to be processed by a stream processor
 package Hammer::Stream;
 
