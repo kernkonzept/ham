@@ -96,6 +96,9 @@ sub upload
     $src_br = $r->rev_parse('--abbrev-ref', $src_br) if $src_br eq 'HEAD';
     push @attrs, "topic=$src_br";
   }
+  foreach my $hashtag (map { split /,/ } @{$opts->{hashtag}}) {
+    push @attrs, "t=$hashtag";
+  }
   push @attrs, @base_attr;
   if (@attrs) {
     $dst_ref .= "%".join(',', @attrs);
