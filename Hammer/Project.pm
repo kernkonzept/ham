@@ -593,6 +593,16 @@ sub checkout
     return 128;
   }
 
+  if (grep /You are in 'detached HEAD' state./, @cerr) {
+    # this happens when e.g. a tag is checked out without creating a branch
+    # (e.g. during ham sync). This is actually a Note printed by git to
+    # stderr.
+    chomp(@cerr);
+    $r->loginfo(@cerr);
+
+    return $cmd->exit;
+  }
+
   if (@cerr) {
     chomp(@cerr);
     $r->logerr(@cerr);
