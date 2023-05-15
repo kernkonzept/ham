@@ -603,6 +603,16 @@ sub checkout
     return $cmd->exit;
   }
 
+  if (grep /HEAD is now at/, @cerr) {
+    # Another message that is not a real error, but printed to stderr by git,
+    # e.g. when running ham init with a tag.
+
+    chomp(@cerr);
+    $r->loginfo(@cerr);
+
+    return $cmd->exit;
+  }
+
   if (@cerr) {
     chomp(@cerr);
     $r->logerr(@cerr);
