@@ -374,8 +374,10 @@ sub sync_checkout
         }
       }
     } else {
+      my $is_dirty = $opts->{'ignore-untracked'} ? $self->status->is_dirty_ignore_untracked
+                                                 : $self->status->is_dirty;
       # avoid touching dirty local HEAD branches
-      if (($head eq $self->{revision}) and ($self->status->is_dirty)) {
+      if (($head eq $self->{revision}) and $is_dirty) {
         $self->loginfo("WARNING: your local working copy has changes, skipping fast-forward.",
                        "         you may use 'git stash; git pull -r; git stash pop'",
                        "         locally to resolve the problem.");

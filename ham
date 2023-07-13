@@ -1037,6 +1037,8 @@ $commands->add(sync => {
     [ 'force-local-update', q|Force update of local projects although
                               updates indicate no changes.| ],
     [ 'exclude-manifest', q|Do not sync manifest repositories.| ],
+    [ 'ignore-untracked', q|Do not skip working copy update because of
+                            untracked files.| ],
     $max_conns_option
   ],
   desc => 'checkout/update all projects'

@@ -46,6 +46,7 @@ sub is_behind
 }
 
 sub is_dirty      { scalar(@{$_[0]}) > 1; }
+sub is_dirty_ignore_untracked { grep { !/^\?\?|\!\!/ } $_[0]->files; }
 sub branch_status { $_[0]->[0]; }
 sub files         { @{$_[0]}[1..$#{$_[0]}]; }
 sub conflicts     { grep { /^(U.|.U|DD|AA)/ } $_[0]->files; }
