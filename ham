@@ -17,7 +17,7 @@ use Hammer::Subcommand;
 use Hammer::Project;
 use Hammer::Plugin;
 
-use XML::Mini::Document;
+use XML::Parser;
 use File::Spec::Functions qw(catdir);
 use File::Spec;
 use File::Path qw(make_path);
@@ -450,12 +450,53 @@ sub preprocess_xml
 
 #use Data::Dumper;
 
+sub parse_xml_manifest
+{
+  my $file = shift;
+  my %data;
+
+  my $parser = XML::Parser->new(
+    Handlers => {
+      Start => sub {
+        my $parser = shift;
+        my $tagname = shift;
+        my %attributes = @_;
+
+        # Ignore root element
+        return unless $parser->context;
+
+        if (exists($data{$tagname}))
+          {
+            if (ref($data{$tagname}) eq "ARRAY")
+              {
+                push @{$data{$tagname}}, \%attributes;
+              }
+            else
+              {
+                $data{$tagname} = [
+                  $data{$tagname},
+                  \%attributes,
+                ];
+              }
+          }
+        else
+          {
+            $data{$tagname} = \%attributes;
+          }
+      },
+    },
+  );
+
+  $parser->parsefile($file);
+
+  return \%data;
+}
+
 sub load_xml_manifest
 {
   my $file = shift;
-  my $xml = XML::Mini::Document->new();
-  $xml->fromFile($file);
-  my $manifest = $xml->toHash->{manifest};
+  my $manifest = parse_xml_manifest($file);
+
   preprocess_xml($manifest, KeyAttr => {
       project          => ["project_name", "name"],
       'remove-project' => ["project_name", "name"],
