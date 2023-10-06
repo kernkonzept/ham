@@ -28,8 +28,8 @@ On openSUSE or SLE you need to install:
 
 On Arch Linux, these packages need to be installed from the AUR by a method of your choice:
 
-    $ pacman -S perl-xml-parser
-    $ yay -S perl-git-repository perl-uri
+    $ pacman -S perl-xml-parser perl-uri
+    $ yay -S perl-git-repository
 
 ## SSH Authentication
 
