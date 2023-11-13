@@ -55,6 +55,7 @@ sub work
 sub _update_progress
 {
   my $self = shift;
+  return unless -t STDERR && -t STDOUT;
   my $txt = '';
   foreach my $r (@{$self->{running}}) {
     $txt .= '['.$r->{err_msg}.']' if defined $r->{err_msg};
