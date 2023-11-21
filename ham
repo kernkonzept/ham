@@ -1855,7 +1855,7 @@ $commands->add('download-id' => {
         my $p = $all_prjs->{$prj_name};
         next unless $p->{revision};
         my @revs = $p->git->run('rev-list', '--max-count', '100', '--sparse',
-                                'HEAD', '--not', '--remotes=*/'.$p->{revision},
+                                'FETCH_HEAD', '--not', '--remotes=*/'.$p->{revision},
                                 '--');
         chomp (@revs);
 
