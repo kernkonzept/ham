@@ -644,7 +644,8 @@ sub cleanup_stale_projects
         push @$info, "rename project: $sp->{name} @ $sp->{path} to $same_path_prj->{name}";
       } else {
         $all_prjs{$n} = $sp;
-        push @$info, "leave stale project behind: ".$n." @ ".$sp->{path};
+        push @$info, "leave stale project behind: ".$n." @ ".$sp->{path}.
+                     " (consider using --cleanup option)";
       }
     } elsif ($sp->{path} ne $p->{path}) {
       push @$info, $n.": moved to new location: ".$sp->{path}." -> ".$p->{path};
