@@ -393,8 +393,12 @@ sub write_downloaded_projects
 # load the manifest infos from .ham/manifests_json and create a project
 sub manifest_prj
 {
-  my $manifest_info = read_ham_json_file('manifests_json');
-  if (not $manifest_info)
+  if (-e ham_file('manifests_json'))
+    {
+      my $manifest_info = read_ham_json_file('manifests_json');
+      return make_manifest_prj(%$manifest_info);
+    }
+  elsif (-e ham_file("manifests_url"))
     {
       print STDERR "no manifest_json found, trying old format manifest_url\n";
       # old manifest_url file conversion
@@ -404,10 +408,14 @@ sub manifest_prj
       close $mf;
       chomp($manifest_url);
 
-      $manifest_info = { url => $manifest_url, project => 'manifest' };
+      my $manifest_info = { url => $manifest_url, project => 'manifest' };
       write_ham_json_file($manifest_info, 'manifests_json');
+      return make_manifest_prj(%$manifest_info);
     }
-  return make_manifest_prj(%$manifest_info);
+  else # No manifest project, e.g. init with --file
+    {
+      return undef;
+    }
 }
 
 
@@ -602,7 +610,14 @@ sub load_projects
   }
 
   my $manifest_prj = manifest_prj();
-  my $manifest_url = URI->new($manifest_prj->{url} . '/' . $manifest_prj->{name} . '/');
+  my $manifest_url;
+  if (defined $manifest_prj) {
+    $manifest_url = URI->new($manifest_prj->{url} . '/' . $manifest_prj->{name} . '/');
+    $projects->{$manifest_prj->{name}} = $manifest_prj;
+    $manifest_project_names{$manifest_prj->{name}} = 1;
+  } else {
+    $manifest_url = URI->new("file:///");
+  }
 
   foreach my $r (values %{$manifest->{remote}}) {
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
@@ -610,8 +625,6 @@ sub load_projects
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
   }
-  $projects->{$manifest_prj->{name}} = $manifest_prj;
-  $manifest_project_names{$manifest_prj->{name}} = 1;
   return $projects;
 }
 
@@ -1051,7 +1064,7 @@ sub cmd_sync
   # update manifest repo, if there is any
   my $manifest = manifest_prj();
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
-  unless ($opts->{'exclude-manifest'}) {
+  unless (!defined($manifest) || $opts->{'exclude-manifest'}) {
     $q->queue(sub { $manifest->sync($opts); });
     $q->work;
     $manifest->prepare($opts);
