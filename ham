@@ -218,6 +218,7 @@ sub ham_file
 # path to the manifest XML file
 sub repo_manifest() { ham_file('manifest.xml'); }
 sub local_manifest_index() { ham_file('local_manifests_index.xml'); }
+sub local_default_revision() { ham_file('default_revision.xml'); }
 # path to the local ham config file
 sub repo_config() { ham_file('config'); }
 
@@ -591,6 +592,12 @@ sub load_projects
     closedir $lm;
   }
 
+  my $local_default_revision = local_default_revision();
+  if (-f $local_default_revision) {
+    my $add = load_xml_manifest($local_default_revision);
+    add_manifest($local_default_revision, $manifest, $add);
+  }
+
   while (my ($n, $r) = each %{$manifest->{remote}}) {
     # read "remote.$n" options form .hamconfig
     while (my ($k, $v) = each %{$config{"remote." . $n}}) {
@@ -765,9 +772,10 @@ $commands->add(init => {
     [ 'url|u=s',    'URL of the manifest repository',    { arg => '<manifest url>' } ],
     [ 'gerrit-url|g=s', 'URL of the gerrit server used for the manifest', { arg => '<gerrit url>' } ],
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
-    [ 'branch|br|b=s',    'branch in the manifest repository', { arg => '<branch name>' } ],
+    [ 'branch|br|b=s',    'branch in the manifest repository. The branch will also be used as default revision', { arg => '<branch name>' } ],
     [ 'type=s', 'Set the type of the manifest repository management system (default gerrit)', { arg => '<repo type>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
+    [ 'default-revision=s', 'generates local manifest which sets default revision to this value', { arg => '<default revision>' } ],
     [ 'local-manifest|l=s@',
       qq|Set up local manifest entry (can be repeated for
         multiple entries). A local manifest descriptor consists of
@@ -1022,6 +1030,20 @@ sub cmd_init
     close $rs;
     close $rd;
   }
+
+  my $default_revision = $opt->{'default-revision'} || $opt->{'branch'};
+  if ($default_revision)
+    {
+      print "Setting up default revision: $default_revision\n";
+      open(my $fh, ">", local_default_revision());
+      print $fh <<EOF;
+<?xml version="1.0"?>
+<manifest>
+  <default revision="$default_revision" />
+</manifest>
+EOF
+      close($fh);
+    }
 
   return 0;
 }
