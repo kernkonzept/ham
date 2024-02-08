@@ -765,7 +765,7 @@ $commands->add(init => {
       { arg => '<url>[,<filename>[,<symlink>[,<branch>]]]' } ],
     $max_conns_option
   ],
-  desc => "initialize $prog meta project in the curent directory"
+  desc => "initialize $prog meta project in the current directory"
 });
 
 
