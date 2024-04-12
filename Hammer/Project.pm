@@ -525,16 +525,16 @@ sub check_ssh
   # typing in the passphrase; new public host key requesting to answer with
   # yes/no, i.e. it requires interaction with the user
 
-  my ($baseurl, $projname) = @_;
+  my ($baseurl) = @_;
 
   return if defined $checked_ssh_db{$baseurl};
   return unless $baseurl =~ /^(git\+)?ssh\:\/\//;
 
   $checked_ssh_db{$baseurl} = 1;
 
-  system("git ls-remote $baseurl/$projname > /dev/null");
+  system("git ls-remote $baseurl > /dev/null");
   if ($?) {
-    print "ham: ssh returned with error with '$baseurl/$projname'\n";
+    print "ham: ssh returned with error with '$baseurl'\n";
     exit 1;
   }
 }
@@ -542,7 +542,7 @@ sub check_ssh
 sub fetch
 {
   my $self = shift;
-  check_ssh($self->{_remote}->{fetch}, $self->{project_name});
+  check_ssh($self->{_remote}->{fetch});
   return (
     $self->bare_git->command('fetch', '--progress', @_, { quiet => 1 }),
     out => \&_collect, err => \&_fetch_progress, args => $self,
@@ -635,7 +635,7 @@ sub get_fetch_url
   $query = "" unless defined $query;
   $fragment = "" unless defined $fragment;
 
-  return "$scheme://$authority$path/$self->{project_name}$query$fragment";
+  return "$scheme://$authority$path$query$fragment";
 }
 
 sub add_to_alternates

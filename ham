@@ -374,6 +374,13 @@ sub manifest_prj
   if (-e ham_file('manifests_json'))
     {
       my $manifest_info = read_ham_json_file('manifests_json');
+      # Transition from using project name in the url automagically
+      if ($manifest_info->{url} !~ m,^ssh://.+/.+,)
+        {
+          $manifest_info->{url} .= "/" . $manifest_info->{project};
+          write_ham_json_file($manifest_info, 'manifests_json');
+        }
+
       return make_manifest_prj(%$manifest_info);
     }
   elsif (-e ham_file("manifests_url"))
@@ -385,6 +392,12 @@ sub manifest_prj
       my $manifest_url = <$mf>;
       close $mf;
       chomp($manifest_url);
+
+      # Transition from using project name in the url automagically
+      if ($manifest_url !~ m,^ssh://.+/,)
+        {
+          $manifest_url .= "/manifest"
+        }
 
       my $manifest_info = { url => $manifest_url, project => 'manifest' };
       write_ham_json_file($manifest_info, 'manifests_json');
@@ -589,25 +602,28 @@ sub load_projects
       apply_default($manifest, $r, $attr);
     }
 
-    $r->{_remote} = $manifest->{remote}->{$r->{remote}};
+    $r->{_remote} = { %{$manifest->{remote}->{$r->{remote}}} };
     $r = Hammer::Project->new($r, root => repo_base(), stderr => $err, stdout => $info);
   }
 
   my $manifest_prj = manifest_prj();
   my $manifest_url;
   if (defined $manifest_prj) {
-    $manifest_url = URI->new($manifest_prj->{url} . '/' . $manifest_prj->{name} . '/');
+    $manifest_url = URI->new($manifest_prj->{url} . '/');
     $projects->{$manifest_prj->{name}} = $manifest_prj;
     $manifest_project_names{$manifest_prj->{name}} = 1;
   } else {
     $manifest_url = URI->new("file:///");
   }
 
-  foreach my $r (values %{$manifest->{remote}}) {
+  foreach my $p (values %$projects) {
+    my $r = $p->{_remote};
     $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
     $r->{fetch} =~ s|^(.*)/$|$1|;
+    $r->{fetch} .= "/" . $p->{name} if $r->{fetch} !~ m,ssh://.+/.+,;
     $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
+    $r->{review} .= "/" . $p->{name} if $r->{review} !~ m,ssh://.+/.+,;
   }
   return $projects;
 }
@@ -778,130 +794,133 @@ sub split_manifest_url
 
   if (defined $opt->{url}) {
     ($manifest_info->{project} = $opt->{url}) =~ s|^.*/||g;
-    ($manifest_info->{url} = $opt->{url})     =~ s|^(.*)/[^/]*$|$1|;
+    $manifest_info->{url} = $opt->{url};
   } elsif (defined $opt->{'gerrit-url'} and defined $opt->{project}) {
     $manifest_info->{project} = $opt->{project};
-    ($manifest_info->{url} = $opt->{'gerrit-url'}) =~ s,/*$,,;
+    $manifest_info->{url} = $opt->{'gerrit-url'} . "/" . $opt->{project};
   }
 
   return $manifest_info;
 }
 
-sub split_local_manifest_descriptors
-{
-  my $opts = shift;
-
-  my @local_manifest_info = ();
-
-  my $i = 1;
-  foreach my $opt (@{$opts->{'local-manifest'}}) {
-
-    # entry parts with defaults
-    my ($raw_url, $file, $symlink, $branch) = split(',', $opt);
-
-    # local_manifest urls can be provided just as project name or as full url
-    my $project  = $raw_url;
-    my $url      = $opts->{'gerrit-url'};
-    if ($raw_url =~ m|[^-./\w]|) { # a real url
-        my $info = split_manifest_url({ url => $raw_url });
-        $project = $info->{project};
-        $url     = $info->{url};
-    }
-
-    # defaults
-    $branch  ||= $opts->{branch};
-    $file    ||= 'default.xml';
-    $symlink ||= sprintf('%02d-%s', $i, $file);
-
-    # unique shortname for git repo subdir
-    my $repo_id = "$url~$project~$branch";
-    $repo_id =~ s/[^-.\w]/~/g;
-    $repo_id =~ s/[^-.\w]/~/g;
-    $repo_id =~ s/~+/~/g;
-
-    # result entry
-    push @local_manifest_info, {
-      raw_url => $raw_url,
-      url     => $url,
-      project => $project,
-      branch  => $branch,
-      file    => $file,
-      symlink => $symlink,
-      repo_id => $repo_id,
-    };
-
-    $i++;
-  }
-
-  return \@local_manifest_info;
-}
-
 sub init_local_manifests
 {
-  my ($opt, $local_manifest_info) = @_;
+  my ($opts) = @_;
 
   my $error = 0;
 
-  # set up local_manifest subdir with symlinks to specified files
-  if (@$local_manifest_info) {
+  my @lm_projects;
 
-    print STDOUT "Preparing local manifests: " .
-                 join(', ', map { $_->{symlink} } @$local_manifest_info) . "\n";
+  my %name_counters;
+  my $i = 1;
+  for my $opt (@{$opts->{'local-manifest'}})
+    {
+      my ($raw_url, $file, $symlink, $branch) = split(',', $opt);
 
-    make_path("$repo_subdir/local_manifests");
-    make_path("$repo_subdir/local_manifests_repos");
+      my $name = $raw_url;
+      $name =~ s,^.+/,,;
 
-    my @local_manifest_index_entries = ();
-    my @local_manifest_projects = map { make_local_manifest_prj($_) } @$local_manifest_info;
-    my $q = Hammer::Process_queue->new(max => max_conns($opt));
-
-    for (my $i = 0; $i < @local_manifest_projects; $i++) {
-      my $lm_prj = $local_manifest_projects[$i];
-      $q->queue(sub { $lm_prj->sync() });
-    }
-    $q->work;
-
-    for (my $i = 0; $i < @local_manifest_projects; $i++) {
-      my $lm_prj = $local_manifest_projects[$i];
-      $lm_prj->prepare();
-      $q->queue(sub { $lm_prj->fetch() });
-    }
-    $q->work;
-
-    for (my $i = 0; $i < @local_manifest_projects; $i++) {
-      my $lm_prj  = $local_manifest_projects[$i];
-      my $lm_info = $local_manifest_info->[$i];
-      $lm_prj->checkout($lm_info);
-
-      if (! -e "$repo_subdir/local_manifests_repos/$lm_info->{repo_id}/$lm_info->{file}")
+      my $url = $raw_url;
+      if ($url !~ m|://| && $opts->{'gerrit-url'})
         {
-          print STDERR "Warning: Local manifest $lm_info->{file} could not be found.\n";
+          $url = $opts->{'gerrit-url'} . "/" . $url;
+        }
+
+      while ($name_counters{$name}++)
+        {
+          $name .= "-" . $name_counters{$name};
+        }
+
+      $file     ||= 'default.xml';
+      $symlink  ||= sprintf('%04d-%s', $i, $file);
+
+      my $path = ".ham/local_manifests_repos/" . $name;
+
+      push @lm_projects, Hammer::Project->new({
+        name => $name,
+        path => $path,
+        remote => "remote-$name",
+        _remote => {
+          name => "remote-$name",
+          fetch => $url,
+          review => $url,
+        },
+        url => $url,
+        revision => $branch || $opts->{'branch'},
+        fixed_revision => 1,
+        is_manifest => 1,
+        keep => 1,
+        file => $file,
+        symlink => $symlink,
+      }, root => realpath('.'), stderr => $err, stdout => $info);
+
+      $i++;
+    }
+
+  return unless @lm_projects;
+
+  make_path(".ham/local_manifests_repos");
+
+  my $q = Hammer::Process_queue->new(max => max_conns($opts));
+
+  for my $project (@lm_projects)
+    {
+      $q->queue(sub { $project->sync(); });
+    }
+
+  $q->work();
+
+  for my $project (@lm_projects)
+    {
+      $project->prepare();
+      $q->queue(sub { $project->fetch(); });
+    }
+  $q->work();
+
+  my @local_manifest_index_entries;
+  for my $project (@lm_projects)
+    {
+      $project->checkout($project->{revision});
+      if (! -e "$repo_subdir/local_manifests_repos/$project->{name}/$project->{file}")
+        {
+          print STDERR "Warning: Local manifest $project->{file} could not be found.\n";
           push @local_manifest_index_entries,
-            qq|  <!-- Missing $lm_info->{repo_id}/$lm_info->{file} -->\n|;
+            qq|  <!-- Missing $project->{name}/$project->{file} -->\n|;
           $error = 1;
           next;
         }
 
-      symlink("../local_manifests_repos/$lm_info->{repo_id}/$lm_info->{file}",
-              "$repo_subdir/local_manifests/$lm_info->{symlink}");
-
-      # register local_manifests itself as projects when coming from gerrit
-      # (and make sure they stay at their initial branch even on ham sync)
       push @local_manifest_index_entries,
-        qq|  <project name="$lm_info->{project}" path="$repo_subdir/local_manifests_repos/$lm_info->{repo_id}" />\n|;
+        qq|<remote name="$project->{_remote}->{name}" fetch="$project->{_remote}->{fetch}" review="$project->{_remote}->{review}" />|;
+
+      my $_revision;
+      $_revision = qq|revision="$project->{revision}"| if $project->{fixed_revision};
+
+      push @local_manifest_index_entries,
+        qq|<project name="$project->{name}" path="$project->{path}" remote="$project->{remote}" $_revision/>|;
     }
 
-    if (@local_manifest_index_entries) {
-      # write local_manifest_index
-      open my $LMI, '>', local_manifest_index()
-        or die "cannot open ".local_manifest_index().": $!";
-      print $LMI qq|<?xml version="1.0" encoding="UTF-8"?>\n<!-- list of patchable (i.e., gerrit) projects -->\n<manifest>\n|;
-      print $LMI $_ foreach @local_manifest_index_entries;
-      print $LMI qq|</manifest>\n|;
-      close $LMI;
-    }
-  }
+  open my $LMI, '>', local_manifest_index()
+    or die "cannot open " . local_manifest_index() . ": $!";
+  print $LMI <<EOF;
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!-- list of patchable (i.e., gerrit) projects -->
+  <!-- AUTOMATICALLY GENERATED. Edit at your own risk -->
+EOF
+  print $LMI "  $_\n" foreach (@local_manifest_index_entries);
+  print $LMI '</manifest>';
+  close($LMI);
   exit 1 if $error;
+
+  make_path(".ham/local_manifests");
+
+  for my $project (@lm_projects)
+    {
+      symlink("../../" . $project->{path} . "/" . $project->{file},
+              ".ham/local_manifests/" . $project->{symlink});
+    }
+
 }
 
 sub cmd_init
@@ -911,7 +930,6 @@ sub cmd_init
   my $repodir = get_repo_dir(1);
 
   my $manifest_info = split_manifest_url($opt);
-  my $local_manifest_info = split_local_manifest_descriptors($opt);
 
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
     # remove old url file
@@ -993,7 +1011,7 @@ sub cmd_init
     print $u encode_json($manifest_info), "\n";
     close $u;
 
-    init_local_manifests($opt, $local_manifest_info);
+    init_local_manifests($opt);
 
   } else {
     # use a local file as manifest and copy it
