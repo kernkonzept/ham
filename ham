@@ -903,8 +903,7 @@ sub init_local_manifests
       # register local_manifests itself as projects when coming from gerrit
       # (and make sure they stay at their initial branch even on ham sync)
       push @local_manifest_index_entries,
-        qq|  <project name="$lm_info->{project}" path="$repo_subdir/local_manifests_repos/$lm_info->{repo_id}" revision="$lm_info->{branch}" />\n|
-          if $lm_info->{raw_url} eq $lm_info->{project};
+        qq|  <project name="$lm_info->{project}" path="$repo_subdir/local_manifests_repos/$lm_info->{repo_id}" />\n|;
     }
 
     if (@local_manifest_index_entries) {
