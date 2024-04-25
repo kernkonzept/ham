@@ -320,29 +320,6 @@ sub make_manifest_prj
   return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
 }
 
-# create a project for a local manifest repository
-sub make_local_manifest_prj
-{
-  my ( $lm ) = @_;
-
-  my ($url, $project, $branch, $file, $symlink, $repo_id) =
-      @{$lm}{qw(url project branch file symlink repo_id)};
-
-  my $p = {
-    name        => $project,
-    path        => "$repo_subdir/local_manifests_repos/$repo_id",
-    remote      => 'origin',
-    _remote     => { name => 'origin', fetch => $url, review => $url },
-    url         => $url,
-    revision    => $branch,
-    is_manifest => 1,
-    keep        => 1,
-  };
-
-  my $r = realpath('.');
-  return Hammer::Project->new($p, root => $r, stderr => $err, stdout => $info);
-}
-
 # load the given JSON file
 # \param 1+ path components relative to the .ham directory
 # \return ARRAY ref, HASH ref, or scalar, undef on error
