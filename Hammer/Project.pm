@@ -582,12 +582,12 @@ sub checkout
     return 128;
   }
   if (grep /(Already on )|(Switched to branch )'$$branch'/, @cerr) {
-    return 128;
+    return 0;
   }
 
   if (grep /Switched to a new branch /, @cerr) {
     # this happens for the initial checkout of a remote branch
-    return 128;
+    return 0;
   }
 
   if (grep /pathspec '\.' did not match any file\(s\) known to git/, @cerr) {

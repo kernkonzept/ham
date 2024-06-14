@@ -880,12 +880,20 @@ sub init_local_manifests
   my @local_manifest_index_entries;
   for my $project (@lm_projects)
     {
-      $project->checkout($project->{revision});
+      if ($project->checkout($project->{revision}) != 0)
+        {
+          print STDERR "Warning: Branch $project->{revision} is not present in repository $project->{name}.\n";
+          push @local_manifest_index_entries,
+            qq|  <!-- Missing branch $project->{revision} in project $project->{name} -->\n|;
+          $error = 1;
+          next;
+        }
+
       if (! -e "$repo_subdir/local_manifests_repos/$project->{name}/$project->{file}")
         {
           print STDERR "Warning: Local manifest $project->{file} could not be found.\n";
           push @local_manifest_index_entries,
-            qq|  <!-- Missing $project->{name}/$project->{file} -->\n|;
+            qq|  <!-- Missing file $project->{name}/$project->{file} -->\n|;
           $error = 1;
           next;
         }
