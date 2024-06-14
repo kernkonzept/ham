@@ -1011,6 +1011,8 @@ sub cmd_init
     print $u encode_json($manifest_info), "\n";
     close $u;
 
+    $opt->{branch} ||= $manifest->git->rev_parse('--abbrev-ref', 'HEAD');
+
     init_local_manifests($opt);
 
   } else {
