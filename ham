@@ -933,8 +933,8 @@ sub cmd_init
 
   if (defined $repodir and -f File::Spec->catdir($repodir, 'manifests_json')) {
     # remove old url file
-    unlink File::Spec->catdir($repodir, 'manifests_url')
-      if -f File::Spec->catdir($repodir, 'manifests_url');
+    my $manifests_url_file = File::Spec->catdir($repodir, 'manifests_url');
+    unlink $manifests_url_file if -f $manifests_url_file;
 
     my $i = read_ham_json_file('manifests_json');
     die "fatal: half initialized ham directory" if not defined $i;
