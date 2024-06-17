@@ -1376,12 +1376,17 @@ sub cmd_start
 ###### info ####################################
 $commands->add(info => {
   cmd  => \&cmd_info,
-  syn  => '%c [<project>...]',
+  syn  => [
+    '%c [<project>...]',
+    [ 'only-modified|m', 'Show only modified projects.' ],
+  ],
   desc => 'show infos for each project'
 });
 
 sub cmd_info
 {
+  my $opts = shift;
+
   select pager;
   my $missing = 0;
   foreach_prj {
@@ -1395,19 +1400,29 @@ sub cmd_info
     }
 
     my $head = $g->rev_parse('--abbrev-ref', 'HEAD');
-    print colored("$p->{name}: in $p->{path}\n", 'bold');
     my $remote_branch = $p->{revision};
     $remote_branch = "<unknown branch>" unless defined $remote_branch;
-    print "  remote: $p->{remote} @ branch ".colored($remote_branch, 'yellow')."\n";
-    print "  local revision: ".colored($head, 'yellow')."\n";
     my $s = $p->status;
-    my $dirty = $s->is_dirty;
-    print "  status: ".$s->branch_status."\n" if $s->is_different;
-    print colored("          contains untracked files\n", 'red') if $s->untracked;
-    print colored("          contains uncommited changes in the index\n", 'green') if $s->index;
-    print colored("          contains modifications in the working copy\n", 'red') if $s->changed;
-    print colored("          has merge conflicts\n", 'bold', 'red') if $s->conflicts;
-    print "\n";
+
+    my $prj_is_modified =
+      # uncommitted changes
+      $s->is_dirty ||
+      # differs from upstream
+      $s->is_different ||
+      # different branch checked out
+      (defined $p->{revision} && $p->{revision} ne $head);
+
+    if (!$opts->{'only-modified'} || $prj_is_modified) {
+      print colored("$p->{name}: in $p->{path}\n", 'bold');
+      print "  remote: $p->{remote} @ branch ".colored($remote_branch, 'yellow')."\n";
+      print "  local revision: ".colored($head, 'yellow')."\n";
+      print "  status: ".$s->branch_status."\n" if $s->is_different;
+      print colored("          contains untracked files\n", 'red') if $s->untracked;
+      print colored("          contains uncommited changes in the index\n", 'green') if $s->index;
+      print colored("          contains modifications in the working copy\n", 'red') if $s->changed;
+      print colored("          has merge conflicts\n", 'bold', 'red') if $s->conflicts;
+      print "\n";
+    }
     0;
   };
 
