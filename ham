@@ -1952,7 +1952,7 @@ $commands->add('rev-list' => {
     { extra_args => 1, config => [ 'pass_through' ] },
   ],
   desc => qq|Print a git rev-list for each project.\r
-             The rev-list for ech project is printed on a single line
+             The rev-list for each project is printed on a single line
              with the following layout:\r
              <project name>: SP <rev> SP ...|,
   cmd => sub {
