@@ -818,12 +818,15 @@ sub init_local_manifests
       my ($raw_url, $file, $symlink, $branch) = split(',', $opt);
 
       my $name = $raw_url;
-      $name =~ s,^.+/,,;
 
       my $url = $raw_url;
       if ($url !~ m|://| && $opts->{'gerrit-url'})
         {
           $url = $opts->{'gerrit-url'} . "/" . $url;
+        }
+      else
+        {
+          $name =~ s,^.+/,,;
         }
 
       while ($name_counters{$name}++)
