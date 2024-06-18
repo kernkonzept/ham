@@ -1247,6 +1247,14 @@ sub cmd_forall
     return 0 if not $opt->{'include-manifest'} and $r->{is_manifest};
 
     print colored("$r->{name}: $r->{path}\n", 'bold') if $print_prj;
+
+    if (! -d $r->abs_path)
+      {
+        print colored("$r->{name}: directory does not exist\n", "red");
+        return 1 if $opt->{'abort-on-errors'};
+        return 0;
+      }
+
     chdir $r->abs_path;
     my @argv = @ARGV;
     if ($opt->{vars}) {
