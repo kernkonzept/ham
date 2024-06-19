@@ -768,7 +768,7 @@ $commands->add(init => {
     [ 'branch|br|b=s',    'branch in the manifest repository. The branch will also be used as default revision', { arg => '<branch name>' } ],
     [ 'type=s', 'Set the type of the manifest repository management system (default gerrit)', { arg => '<repo type>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file', { arg => '<manifest>' } ],
-    [ 'default-revision=s', 'generates local manifest which sets default revision to this value', { arg => '<default revision>' } ],
+    [ 'default-revision=s', 'use this branch as default revision instead of the value from --branch (or the default branch of the manifest repository in case --branch is not specified)', { arg => '<default revision>' } ],
     [ 'local-manifest|l=s@',
       qq|Set up local manifest entry (can be repeated for
         multiple entries). A local manifest descriptor consists of
