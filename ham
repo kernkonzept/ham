@@ -820,6 +820,8 @@ sub init_local_manifests
 
   my %name_counters;
   my $i = 1;
+  my %local_manifest_repo_lookup;
+  my @symlinks;
   for my $opt (@{$opts->{'local-manifest'}})
     {
       my ($raw_url, $file, $symlink, $branch) = split(',', $opt);
@@ -845,24 +847,42 @@ sub init_local_manifests
       $symlink  ||= sprintf('%04d-%s', $i, $file);
 
       my $path = ".ham/local_manifests_repos/" . $name;
+      my $revision = (defined($branch) && $branch ne "") ? $branch : $opts->{'branch'};
+      my $prj;
 
-      push @lm_projects, Hammer::Project->new({
-        name => $name,
-        path => $path,
-        remote => "remote-$name",
-        _remote => {
-          name => "remote-$name",
-          fetch => $url,
-          review => $url,
-        },
-        url => $url,
-        revision => $branch || $opts->{'branch'},
-        fixed_revision => 1,
-        is_manifest => 1,
-        keep => 1,
+      if (exists $local_manifest_repo_lookup{$url . "\0" . $revision})
+        {
+          $prj = $local_manifest_repo_lookup{$url . "\0" . $revision};
+          $path = $prj->{path};
+        }
+      else
+        {
+          $prj = Hammer::Project->new({
+            name => $name,
+            path => $path,
+            remote => "remote-$name",
+            _remote => {
+              name => "remote-$name",
+              fetch => $url,
+              review => $url,
+            },
+            url => $url,
+            revision => $revision,
+            fixed_revision => 1,
+            is_manifest => 1,
+            keep => 1,
+          }, root => realpath('.'), stderr => $err, stdout => $info);
+
+          push @lm_projects, $prj;
+
+          $local_manifest_repo_lookup{$url . "\0" . $revision} = $prj;
+        }
+
+      push @symlinks, {
+        project => $prj,
         file => $file,
         symlink => $symlink,
-      }, root => realpath('.'), stderr => $err, stdout => $info);
+      };
 
       $i++;
     }
@@ -899,15 +919,6 @@ sub init_local_manifests
           next;
         }
 
-      if (! -e "$repo_subdir/local_manifests_repos/$project->{name}/$project->{file}")
-        {
-          print STDERR "Warning: Local manifest $project->{file} could not be found.\n";
-          push @local_manifest_index_entries,
-            qq|  <!-- Missing file $project->{name}/$project->{file} -->\n|;
-          $error = 1;
-          next;
-        }
-
       push @local_manifest_index_entries,
         qq|<remote name="$project->{_remote}->{name}" fetch="$project->{_remote}->{fetch}" review="$project->{_remote}->{review}" />|;
 
@@ -933,12 +944,20 @@ EOF
 
   make_path(".ham/local_manifests");
 
-  for my $project (@lm_projects)
+  for my $symlink (@symlinks)
     {
-      symlink("../../" . $project->{path} . "/" . $project->{file},
-              ".ham/local_manifests/" . $project->{symlink});
+      symlink("../../" . $symlink->{project}{path} . "/" . $symlink->{file},
+              ".ham/local_manifests/" . $symlink->{symlink});
+
+      if ( ! -e $symlink->{project}{path} . "/" . $symlink->{file} )
+        {
+          print STDERR "WARNING: Local manifest project $symlink->{project}{url} (Revision $symlink->{project}{revision}) is missing file $symlink->{file}\n";
+          $error = 1;
+        }
+
     }
 
+  exit 1 if $error;
 }
 
 sub cmd_init
