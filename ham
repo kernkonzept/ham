@@ -153,7 +153,10 @@ sub project_for_path
 my $commands = Hammer::Subcommand->new(
   cmd  => sub { $_[2]->print_usage($_[1], pager); },
   syn  => '%c',
-  desc => 'print help'
+  desc => <<"EOF",
+Hammer is a tool to manage big projects that consist of
+multiple git repositories, which are loosely coupled.
+EOF
 );
 
 $commands->add(help => {
