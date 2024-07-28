@@ -44,6 +44,12 @@ if (-t STDOUT) {
   *colored = sub { return $_[0]; }
 }
 
+if ($ARGV[0] eq "-C")
+  {
+    (my $C, my $path, @ARGV) = @ARGV;
+    chdir($path) or die "Could not enter directory '$path'\n";
+  }
+
 # add gerrit support per default
 Hammer::Plugin->load_plugin('Hammer::Changes::Gerrit');
 
@@ -152,7 +158,10 @@ sub project_for_path
 ###### the main command (no command given) ############################
 my $commands = Hammer::Subcommand->new(
   cmd  => sub { $_[2]->print_usage($_[1], pager); },
-  syn  => '%c',
+  syn  => [
+    '%c',
+    [ 'C=s', 'working directory for ham command' ],
+  ],
   desc => <<"EOF",
 Hammer is a tool to manage big projects that consist of
 multiple git repositories, which are loosely coupled.
