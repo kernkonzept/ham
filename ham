@@ -33,6 +33,12 @@ my %config = ();
 my $touched_manifest = 0;
 my %manifest_project_names = ();
 
+# Stable i18n
+$ENV{LC_ALL} = 'C';
+
+# Forbid ssh to ask for password via STDIN, we do not support this.
+$ENV{SSH_ASKPASS_REQUIRE} = 'force';
+
 if (-t STDOUT) {
   eval { require Term::ANSIColor };
   if (!$@) {
