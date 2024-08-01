@@ -626,16 +626,7 @@ sub checkout
 sub get_fetch_url
 {
   my $self = shift;
-  my $url = $self->{_remote}->{fetch};
-
-  my($scheme, $authority, $path, $query, $fragment) =
-    $url =~ m|(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?|;
-
-  $path = "" unless defined $path;
-  $query = "" unless defined $query;
-  $fragment = "" unless defined $fragment;
-
-  return "$scheme://$authority$path$query$fragment";
+  return $self->{_remote}->{fetch};
 }
 
 sub add_to_alternates

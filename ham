@@ -374,12 +374,6 @@ sub manifest_prj
   if (-e ham_file('manifests_json'))
     {
       my $manifest_info = read_ham_json_file('manifests_json');
-      # Transition from using project name in the url automagically
-      if ($manifest_info->{url} !~ m,^ssh://.+/.+,)
-        {
-          $manifest_info->{url} .= "/" . $manifest_info->{project};
-          write_ham_json_file($manifest_info, 'manifests_json');
-        }
 
       return make_manifest_prj(%$manifest_info);
     }
@@ -392,12 +386,6 @@ sub manifest_prj
       my $manifest_url = <$mf>;
       close $mf;
       chomp($manifest_url);
-
-      # Transition from using project name in the url automagically
-      if ($manifest_url !~ m,^ssh://.+/,)
-        {
-          $manifest_url .= "/manifest"
-        }
 
       my $manifest_info = { url => $manifest_url, project => 'manifest' };
       write_ham_json_file($manifest_info, 'manifests_json');
@@ -617,14 +605,21 @@ sub load_projects
   }
 
   foreach my $p (values %$projects) {
+    # Manifest repositories have real remote urls in _remote. They don't need
+    # adjustments.
+    next if $p->{is_manifest};
+
+    # Non-manifest repositories need their remote adjusted, they may be
+    # specified relative to the main manifest repository and they need their
+    # project name appended.
     my $r = $p->{_remote};
-    $r->{fetch} = URI->new_abs($r->{fetch}, $manifest_url)->as_string;
+    $r->{fetch} = URI->new_abs($r->{fetch} . "/" . $p->{name}, $manifest_url)->as_string;
     $r->{fetch} =~ s|^(.*)/$|$1|;
-    $r->{fetch} .= "/" . $p->{name} if $r->{fetch} !~ m,ssh://.+/.+,;
-    $r->{review} = URI->new_abs($r->{review}, $manifest_url)->as_string;
+    $r->{review} = URI->new_abs($r->{review} . "/" . $p->{name}, $manifest_url)->as_string;
     $r->{review} =~ s|^(.*)/$|$1|;
-    $r->{review} .= "/" . $p->{name} if $r->{review} !~ m,ssh://.+/.+,;
   }
+
+
   return $projects;
 }
 
