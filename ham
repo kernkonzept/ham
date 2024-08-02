@@ -1153,24 +1153,40 @@ $commands->add(sync => {
 sub cmd_sync
 {
   my ($opts, $command, $cmd) = @_;
-  # update manifest repo, if there is any
-  my $manifest = manifest_prj();
+
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
-  unless (!defined($manifest) || $opts->{'exclude-manifest'}) {
-    $q->queue(sub { $manifest->sync($opts); });
+
+  # update manifest repo and local manifest repos first
+  unless ($opts->{'exclude-manifest'}) {
+    my $projects_tmp = load_projects();
+    $projects_tmp = filter_projects($projects_tmp, \@ARGV);
+    $projects_tmp = [ sort { $a->{name} cmp $b->{name} } values %$projects_tmp ];
+
+    my @manifest_repos;
+    for my $prj (@$projects_tmp) {
+        next unless $prj->{is_manifest};
+        push @manifest_repos, $prj;
+        $q->queue(sub { $prj->sync($opts); });
+    }
+
     $q->work;
-    $manifest->prepare($opts);
+
+    $_->prepare($opts) foreach @manifest_repos;
   }
 
   place_commit_msg_hook();
 
+  # Either reload projects, after manifest updates. Or for the first time if
+  # manifests were excluded.
   my $projects = load_projects();
   cleanup_stale_projects($projects, $opts);
   $projects = filter_projects($projects, \@ARGV);
   $projects = [ sort { $a->{name} cmp $b->{name} } values %$projects ];
 
   foreach my $r (@$projects) {
-    next if $opts->{'exclude-manifest'} && $r->{is_manifest};
+    # Manifest repos were already updated further up
+    next if $r->{is_manifest};
+
     $q->queue(sub { $r->sync($opts); });
   }
   $q->work;
