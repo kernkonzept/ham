@@ -387,6 +387,23 @@ sub manifest_prj
     {
       my $manifest_info = read_ham_json_file('manifests_json');
 
+      # Handle transition from url without project name to complete url. Since
+      # there are manifests_json containing urls without project name that also
+      # have no file_version, we need to update the url from the actual git
+      # repository once.
+      if(!defined($manifest_info->{file_version}))
+        {
+          # Read actual url from git repository
+          my $prj = make_manifest_prj(%$manifest_info);
+          my $remote_name = $prj->{_remote}->{name};
+          my $url = $prj->git->config("remote.$remote_name.url");
+
+          $manifest_info->{file_version} = 1;
+          $manifest_info->{url} = $url;
+
+          write_ham_json_file($manifest_info, 'manifests_json');
+        }
+
       return make_manifest_prj(%$manifest_info);
     }
   elsif (-e ham_file("manifests_url"))
@@ -401,7 +418,10 @@ sub manifest_prj
 
       my $manifest_info = { url => $manifest_url, project => 'manifest' };
       write_ham_json_file($manifest_info, 'manifests_json');
-      return make_manifest_prj(%$manifest_info);
+
+      # Rerun this function because there might be some format transition code
+      # necessary for the manifests_json
+      return manifest_prj();
     }
   else # No manifest project, e.g. init with --file
     {
@@ -565,6 +585,14 @@ sub load_projects
     my $local_manifest_index = load_xml_manifest($lm_index);
     $_->{is_manifest} = 1 foreach values %{$local_manifest_index->{project}};
     $manifest_project_names{$_} = 1 foreach keys %{$local_manifest_index->{project}};
+
+    # Projects in local manifest index without remote set, still need their
+    # fetch url handled like non-manifest repositories. Mark thos projects here,
+    # handle later.
+    foreach my $prj (values %{$local_manifest_index->{project}}) {
+      $prj->{_old_style_lm} = 1 unless exists $prj->{remote};
+    }
+
     add_manifest($f, $manifest, $local_manifest_index);
   }
 
@@ -619,7 +647,10 @@ sub load_projects
   foreach my $p (values %$projects) {
     # Manifest repositories have real remote urls in _remote. They don't need
     # adjustments.
-    next if $p->{is_manifest};
+    # Exception: Older local manifest repositories have no specific remote set
+    # in the local_manifests_index.xml and still need to be adjusted like normal
+    # projects.
+    next if $p->{is_manifest} && !$p->{_old_style_lm};
 
     # Non-manifest repositories need their remote adjusted, they may be
     # specified relative to the main manifest repository and they need their
