@@ -20,7 +20,7 @@ use Hammer::Plugin;
 use XML::Parser;
 use File::Spec::Functions qw(catdir);
 use File::Spec;
-use File::Path qw(make_path);
+use File::Path qw(make_path remove_tree);
 use URI;
 use IO::Select;
 use Cwd;
@@ -997,6 +997,18 @@ EOF
   exit 1 if $error;
 }
 
+sub ham_init_error
+{
+  my $msg = shift;
+  print STDERR <<EOF;
+FATAL ERROR: $msg
+
+To delete the .ham directory and start anew with "ham init", run "ham purge" first.
+EOF
+
+  exit(128);
+}
+
 sub cmd_init
 {
   my ($opt, $command, $cmd) = @_;
@@ -1011,13 +1023,17 @@ sub cmd_init
     unlink $manifests_url_file if -f $manifests_url_file;
 
     my $i = read_ham_json_file('manifests_json');
-    die "fatal: half initialized ham directory" if not defined $i;
+
+    ham_init_error 'Incomplete .ham directory detected. This is often caused by an error during "ham init".'
+      unless defined($i);
+
     if ((defined $manifest_info->{url} and $manifest_info->{url} ne $i->{url})
         or (defined $manifest_info->{project} and $manifest_info->{project} ne $i->{project})) {
-      die "fatal: ham directory already initialized for different URL $i->{url}"
+
+      ham_init_error ".ham directory already initialized for different URL $i->{url}";
     }
 
-    print STDERR "warning: ham directory already initialized\n";
+    print STDERR "warning: .ham directory already initialized\n";
 
     # no new revision, don't do anything
     if (not defined $manifest_info->{revision}) {
@@ -1045,21 +1061,20 @@ sub cmd_init
     close $mf;
     chomp $manifest_url;
     my $i = split_manifest_url({ url => $manifest_url, branch => $opt->{branch} });
-    die "fatal: reinitializing ham directory without URL"
+    ham_init_error "Present .ham directory has no URL."
       if not defined $manifest_info->{url};
 
-    die "fatal: ham directory already initialized for different URL $manifest_url"
+    ham_init_error ".ham directory already initialized for different URL $manifest_url"
       if ($manifest_info->{url} ne $i->{url}
           or $manifest_info->{project} ne $i->{project});
 
-    print STDERR "warning: ham directory already initialized\n";
+    print STDERR "warning: .ham directory already initialized\n";
     return 0;
   }
 
 
   if (defined $repodir) {
-    print STDERR "fatal: half initialized ham directory, please cleanup\n";
-    exit(128);
+    ham_init_error "Incomplete .ham directory detected."
   }
 
   $repo_dir = $repo_subdir;
@@ -1092,8 +1107,8 @@ sub cmd_init
   } else {
     # use a local file as manifest and copy it
     my $repo_dat = repo_manifest();
-    die "error: you need to specify a manifest XML file\n" if not defined $repo_dat_src;
-    die "error: $repo_dat_src is no readable file\n" if not (-f $repo_dat_src and -r $repo_dat_src);
+    die "You need to specify a manifest XML file\n" if not defined $repo_dat_src;
+    die "$repo_dat_src is not a readable file\n" if not (-f $repo_dat_src and -r $repo_dat_src);
     mkdir($repo_subdir);
     open my $rd, ">$repo_dat" or die "error: cannot open $repo_dat: $!\n";
     open my $rs, "<$repo_dat_src" or die "error: cannot open $repo_dat_src: $!\n";
@@ -2345,6 +2360,54 @@ $commands->add('add' => {
 
     return 0;
   }
+});
+
+###### purge ##################################
+$commands->add('purge' => {
+  syn => [
+    '%c %o',
+  ],
+  desc => qq|Remove .ham directory (DANGEROUS)|,
+  cmd => sub {
+    my ($opts, $command, $cmd) = @_;
+
+    my $repodir = get_repo_dir();
+
+    print STDERR <<EOF;
+BE CAREFUL: This command removes the .ham directory and therefore
+deletes any information ham saved about any current git repositories
+managed by ham. This cannot be undone!
+
+Are you sure you want to remove the .ham directory?
+EOF
+    print STDERR 'Please type "YES!" if you are sure: ';
+
+    my $answer = <STDIN>;
+    chomp $answer;
+
+    if ($answer eq "YES!")
+      {
+        remove_tree($repodir, { error => \my $err });
+
+        if ($err && @$err)
+          {
+            foreach my $e (@$err)
+              {
+                my ($file, $msg) = %$e;
+
+                print STDERR "Error: " . ($file ne '' ? "File $file: " : "") . "$msg\n";
+              }
+          }
+        else
+          {
+            print "Removed .ham directory.\n";
+          }
+      }
+    else
+      {
+        print "Aborted.\n";
+      }
+  },
 });
 
 
