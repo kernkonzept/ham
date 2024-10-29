@@ -16,8 +16,9 @@ use Hammer::Process_queue;
 use Hammer::Subcommand;
 use Hammer::Project;
 use Hammer::Plugin;
+use Hammer::Manifest;
+use Hammer::HelperFunc qw(mapvalues);
 
-use XML::Parser;
 use File::Spec::Functions qw(catdir);
 use File::Spec;
 use File::Path qw(make_path remove_tree);
@@ -447,145 +448,6 @@ sub manifest_prj
     }
 }
 
-
-sub preprocess_xml
-{
-  my $m = shift;
-  my %opts = @_;
-
-  sub gen_hash($$$)
-  {
-    my $in = shift;
-    my $key = shift;
-    my $node = shift;
-    $in = [ $in ] unless ref $in eq 'ARRAY';
-    $key = [ $key ] unless ref $key eq 'ARRAY';
-    my $out = {};
-    foreach my $e (@$in) {
-      my $n = undef;
-      foreach my $k (@$key) {
-        $n = $e->{$k};
-        if (defined $n) {
-          $out->{$n} = $e;
-          last;
-        }
-      }
-      if (not defined $n) {
-        print STDERR "error: missing '@$key' attribute in <$node ...> node\n";
-        next;
-      }
-    }
-    return $out;
-  }
-
-  while (my ($k, $v) = each %{$opts{KeyAttr}}) {
-    if (defined $m->{$k}) {
-      $m->{$k} = gen_hash($m->{$k}, $v, $k);
-    }
-  }
-}
-
-#use Data::Dumper;
-
-sub parse_xml_manifest
-{
-  my $file = shift;
-  my %data;
-
-  my $parser = XML::Parser->new(
-    Handlers => {
-      Start => sub {
-        my $parser = shift;
-        my $tagname = shift;
-        my %attributes = @_;
-
-        # Ignore root element
-        return unless $parser->context;
-
-        if (exists($data{$tagname}))
-          {
-            if (ref($data{$tagname}) eq "ARRAY")
-              {
-                push @{$data{$tagname}}, \%attributes;
-              }
-            else
-              {
-                $data{$tagname} = [
-                  $data{$tagname},
-                  \%attributes,
-                ];
-              }
-          }
-        else
-          {
-            $data{$tagname} = \%attributes;
-          }
-      },
-    },
-  );
-
-  $parser->parsefile($file);
-
-  return \%data;
-}
-
-sub load_xml_manifest
-{
-  my $file = shift;
-  my $manifest = parse_xml_manifest($file);
-
-  preprocess_xml($manifest, KeyAttr => {
-      project          => ["project_name", "name"],
-      'remove-project' => ["project_name", "name"],
-      'extend-project' => ["project_name", "name"],
-      remote           => "name",
-      'remove-remote'  => "name",
-      'extend-remote'  => "name" });
-  # print Dumper($manifest);
-  return $manifest;
-}
-
-sub override_manifest_node
-{
-  my ($file, $node, $m, $add) = @_;
-
-  foreach my $p (keys %{$add->{'remove-' . $node}}) {
-    delete $m->{$node}{$p};
-  }
-
-  while (my ($pn, $p) = each %{$add->{$node}}) {
-    if (defined $m->{$node}{$pn}) {
-      print STDERR "error: duplicate $node '$pn' defined in file $file\n";
-      next;
-    }
-    $m->{$node}{$pn} = $p;
-  }
-
-  while (my ($pn, $p) = each %{$add->{'extend-' . $node}}) {
-    if (not defined $m->{$node}{$pn}) {
-      print STDERR "error: $node '$pn' not found, cannot extend from file $file\n";
-      next;
-    }
-    while (my ($k, $v) = each %$p) {
-      $m->{$node}{$pn}{$k} = $v;
-    }
-  }
-}
-
-sub add_manifest
-{
-  my ($file, $m, $add) = @_;
-  # merge defaults
-  foreach my $def (qw(remote revision)) {
-    $m->{default}{$def} = $add->{default}{$def} if $add->{default}{$def};
-  }
-  foreach my $sec (qw(project remote)) {
-    override_manifest_node($file, $sec, $m, $add);
-  }
-  # print "==== After loading $file ====\n";
-  # print Dumper($m);
-}
-
 # load all projects, including the manifest
 sub load_projects
 {
@@ -594,44 +456,48 @@ sub load_projects
     return plain_git_project();
   }
 
-  my $manifest = load_xml_manifest(repo_manifest());
+  ### Main manifest
+  my $manifest = Hammer::Manifest->new_from_file(repo_manifest());
 
-  # read patchable (gerrit) manifest projects from local_manifest_index
-  my $lm_index = local_manifest_index();
-  if (-e $lm_index) {
-    my $f = File::Spec->catfile($lm_index);
-    my $local_manifest_index = load_xml_manifest($lm_index);
-    $_->{is_manifest} = 1 foreach values %{$local_manifest_index->{project}};
-    $manifest_project_names{$_} = 1 foreach keys %{$local_manifest_index->{project}};
+  ### Local manifest index
+  # contains projects (git repositories) that contain local manifests
+  my $lmi_path = local_manifest_index();
+  if (-e $lmi_path) {
 
-    # Projects in local manifest index without remote set, still need their
-    # fetch url handled like non-manifest repositories. Mark thos projects here,
-    # handle later.
-    foreach my $prj (values %{$local_manifest_index->{project}}) {
-      $prj->{_old_style_lm} = 1 unless exists $prj->{remote};
-    }
+    my $lmi_manifest = Hammer::Manifest->new_from_file($lmi_path);
 
-    add_manifest($f, $manifest, $local_manifest_index);
+    $lmi_manifest->each_project(sub {
+      $manifest_project_names{$_->{name}} = 1;
+
+      $_->{is_manifest} = 1;
+
+      # Projects in local manifest index without remote set, still need their
+      # fetch url handled like non-manifest repositories. Mark thos projects here,
+      # handle later.
+      $_->{_old_style_lm} = 1 unless exists $_->{remote};
+    });
+
+    $manifest->extend($lmi_manifest);
   }
 
+  ### Local manifests
+  # overrides to the original main manifest
   my $local_manifests_dir = catdir($ham_dir, "local_manifests");
   if (-d $local_manifests_dir) {
-    opendir(my $lm, $local_manifests_dir)
-      or die "cannot open local manifest directory '$local_manifests_dir': $!";
-    foreach my $d (sort (readdir($lm))) {
-      next if not $d =~ /\.xml$/i;
-      my $f = File::Spec->catfile($local_manifests_dir, $d);
-      next if not -f $f;
-      my $add = load_xml_manifest($f);
-      add_manifest($f, $manifest, $add);
+    foreach my $lm_path ( sort glob("${local_manifests_dir}/*.xml") ) {
+      next unless -f $lm_path;
+
+      my $lm_manifest = Hammer::Manifest->new_from_file($lm_path);
+      $manifest->extend($lm_manifest);
     }
-    closedir $lm;
   }
 
-  my $local_default_revision = local_default_revision();
-  if (-f $local_default_revision) {
-    my $add = load_xml_manifest($local_default_revision);
-    add_manifest($local_default_revision, $manifest, $add);
+  ### Local default revision
+  # contains default revision introduced during ham init
+  my $ldr_path = local_default_revision();
+  if (-f $ldr_path) {
+    my $ldr_manifest = Hammer::Manifest->new_from_file($ldr_path);
+    $manifest->extend($ldr_manifest);
   }
 
   while (my ($n, $r) = each %{$manifest->{remote}}) {
@@ -642,27 +508,21 @@ sub load_projects
     }
   }
 
-  my $projects = $manifest->{project};
-  foreach my $r (values %$projects) {
-    foreach my $attr (@project_attrs) {
-      apply_default($manifest, $r, $attr);
-    }
-
-    $r->{_remote} = { %{$manifest->{remote}->{$r->{remote}}} };
-    $r = Hammer::Project->new($r, root => repo_base(), stderr => $err, stdout => $info);
-  }
+  my %projects = mapvalues {
+    Hammer::Project->new($_, root => repo_base(), stderr => $err, stdout => $info)
+  } $manifest->projects();
 
   my $manifest_prj = manifest_prj();
   my $manifest_url;
   if (defined $manifest_prj) {
     $manifest_url = URI->new($manifest_prj->{url} . '/');
-    $projects->{$manifest_prj->{name}} = $manifest_prj;
+    $projects{$manifest_prj->{name}} = $manifest_prj;
     $manifest_project_names{$manifest_prj->{name}} = 1;
   } else {
     $manifest_url = URI->new("file:///");
   }
 
-  foreach my $p (values %$projects) {
+  foreach my $p (values %projects) {
     # Manifest repositories have real remote urls in _remote. They don't need
     # adjustments.
     # Exception: Older local manifest repositories have no specific remote set
@@ -682,8 +542,7 @@ sub load_projects
     }
   }
 
-
-  return $projects;
+  return \%projects;
 }
 
 sub project_for_rel_path
