@@ -3,7 +3,7 @@ package Hammer::Manifest;
 use strict;
 use warnings;
 use XML::Parser;
-use Hammer::HelperFunc qw(findkey);
+use Hammer::HelperFunc qw(findkey genxmltag);
 
 sub new
 {
@@ -85,6 +85,70 @@ sub new_from_file
   $parser->parsefile($file);
 
   return $self;
+}
+
+sub toxml
+{
+  my $self = shift;
+  my $path = shift;
+
+  my @elements = ( '<!-- AUTOMATICALLY GENERATED. Edit at your own risk -->' );
+
+  # Generate default tag if any
+  if (my %defaults = %{$self->{default}})
+    {
+      push @elements, genxmltag("default", %defaults), "";
+    }
+
+  # Generate all *remote and *project tags
+  foreach my $type (qw(remote project))
+    {
+      foreach my $prefix ("", "remove-", "extend-")
+        {
+          my $any = 0;
+          my $tag = "${prefix}${type}";
+
+          foreach my $name (sort keys %{$self->{$tag}})
+            {
+              $any = 1;
+
+              my $instance = $self->{$tag}{$name};
+
+              if ($type eq "project" && $name ne $instance->{name}) {
+                $instance->{project_name} = $name;
+              }
+
+              push @elements, genxmltag($tag, %$instance);
+            }
+
+          push @elements, "" if $any;
+        }
+    }
+
+  # Remove last empty line.
+  pop @elements if @elements;
+
+  # Generate XML lines
+  my @xml = (
+    '<?xml version="1.0" encoding="UTF-8" ?>',
+    '<manifest>',
+    (map { $_ ? s/^/  /rmg : "" } @elements),
+    '</manifest>',
+  );
+
+  # Make it one string
+  my $xml_raw = join "", map { "$_\n" } @xml;
+
+  return $xml_raw;
+}
+
+sub writefile
+{
+  my ($self, $path) = @_;
+  open(my $fh, ">", $path)
+    or die "Unable to open file $path: $!";
+  print $fh $self->toxml();
+  close($fh);
 }
 
 # Apply a local manifest to a manifest
@@ -198,6 +262,38 @@ sub each_project(&) {
       local $_ = $project;
       $cb->();
     }
+}
+
+# Reusable shortcut for adding something
+sub _add {
+  my ($self, $type, $required_attrs, $attrs) = @_;
+
+  foreach my $attr (@$required_attrs)
+    {
+      die "Internal error: Trying to add '$type' without attribute '$attr'"
+        unless $attrs->{$attr};
+    }
+
+  die "Internal error: Trying to add duplicate project '" . $attrs->{name} . "'"
+    if exists $self->{$type}{$attrs->{name}};
+
+  my $copy =  { %$attrs };
+
+  $self->{$type}{$attrs->{name}} = $copy;
+
+  return $copy;
+}
+
+sub add_project {
+  my $self = shift;
+
+  $self->_add('project', [ qw(name path) ], { @_ });
+}
+
+sub add_remote {
+  my $self = shift;
+
+  $self->_add('remote', [ qw(name fetch) ], { @_ });
 }
 
 1;

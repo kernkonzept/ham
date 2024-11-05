@@ -847,39 +847,34 @@ sub init_local_manifests
     }
   $q->work();
 
-  my @local_manifest_index_entries;
+
+  my $lmi = Hammer::Manifest->new();
   for my $project (@lm_projects)
     {
       if ($project->checkout($project->{revision}) != 0)
         {
-          print STDERR "Warning: Branch $project->{revision} is not present in repository $project->{name}.\n";
-          push @local_manifest_index_entries,
-            qq|  <!-- Missing branch $project->{revision} in project $project->{name} -->\n|;
+          print STDERR "Warning: Branch $project->{revision} is not present in repository $project->{name}. Skipping.\n";
           $error = 1;
           next;
         }
 
-      push @local_manifest_index_entries,
-        qq|<remote name="$project->{_remote}->{name}" fetch="$project->{_remote}->{fetch}" review="$project->{_remote}->{review}" />|;
+      $lmi->add_remote(
+        name => $project->{_remote}{name},
+        fetch => $project->{_remote}{fetch},
+        review => $project->{_remote}{review},
+      );
 
-      my $_revision;
-      $_revision = qq|revision="$project->{revision}"| if $project->{fixed_revision};
+      my $p = $lmi->add_project(
+        name => $project->{name},
+        path => $project->{path},
+        remote => $project->{remote}
+      );
 
-      push @local_manifest_index_entries,
-        qq|<project name="$project->{name}" path="$project->{path}" remote="$project->{remote}" $_revision/>|;
+      $p->{revision} = $project->{revision} if $project->{fixed_revision};
     }
 
-  open my $LMI, '>', local_manifest_index()
-    or die "cannot open " . local_manifest_index() . ": $!";
-  print $LMI <<EOF;
-<?xml version="1.0" encoding="UTF-8"?>
-<manifest>
-  <!-- list of patchable (i.e., gerrit) projects -->
-  <!-- AUTOMATICALLY GENERATED. Edit at your own risk -->
-EOF
-  print $LMI "  $_\n" foreach (@local_manifest_index_entries);
-  print $LMI '</manifest>';
-  close($LMI);
+  $lmi->writefile(local_manifest_index());
+
   exit 1 if $error;
 
   make_path(".ham/local_manifests");
