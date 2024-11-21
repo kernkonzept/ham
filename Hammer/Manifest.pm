@@ -69,10 +69,7 @@ sub new_from_file
           }
         elsif ($tagname eq "default")
           {
-            $self->{default} = {
-              %{$self->{default}},
-              %attr
-            };
+            $self->set_default(\%attr);
           }
         else
           {
@@ -294,6 +291,16 @@ sub add_remote {
   my $self = shift;
 
   $self->_add('remote', [ qw(name fetch) ], { @_ });
+}
+
+sub set_default {
+  my $self = shift;
+  my ($defaults) = @_;
+
+  $self->{default} = {
+    %{$self->{default}},
+    %$defaults,
+  };
 }
 
 1;

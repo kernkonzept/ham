@@ -1015,14 +1015,10 @@ sub cmd_init
   if ($default_revision)
     {
       print "Setting up default revision: $default_revision\n";
-      open(my $fh, ">", local_default_revision());
-      print $fh <<EOF;
-<?xml version="1.0"?>
-<manifest>
-  <default revision="$default_revision" />
-</manifest>
-EOF
-      close($fh);
+
+      my $defrev = Hammer::Manifest->new();
+      $defrev->set_default({revision => $default_revision});
+      $defrev->writefile(local_default_revision());
     }
 
   return 0;
