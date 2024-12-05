@@ -664,8 +664,10 @@ sub load_projects
     my $r = $p->{_remote};
     $r->{fetch} = URI->new_abs($r->{fetch} . "/" . $p->{name}, $manifest_url)->as_string;
     $r->{fetch} =~ s|^(.*)/$|$1|;
-    $r->{review} = URI->new_abs($r->{review} . "/" . $p->{name}, $manifest_url)->as_string;
-    $r->{review} =~ s|^(.*)/$|$1|;
+    if (defined $r->{review}) {
+      $r->{review} = URI->new_abs($r->{review} . "/" . $p->{name}, $manifest_url)->as_string;
+      $r->{review} =~ s|^(.*)/$|$1|;
+    }
   }
 
 
