@@ -414,7 +414,7 @@ sub manifest_prj
     }
   elsif (-e ham_file("manifests_url"))
     {
-      print STDERR "no manifest_json found, trying old format manifest_url\n";
+      print STDERR "no manifests_json found, trying old format manifest_url\n";
       # old manifest_url file conversion
 
       open my $mf, "<".ham_file('manifests_url') or die "no manifest URL found";
