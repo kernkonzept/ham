@@ -1161,7 +1161,9 @@ $commands->add(sync => {
                               updates indicate no changes.| ],
     [ 'exclude-manifest', q|Do not sync manifest repositories.| ],
     [ 'ignore-untracked', q|Do not skip working copy update because of
-                            untracked files.| ],
+                            untracked files. DEPRECATED: It's the default now.| ],
+    [ 'no-ignore-untracked', q|Skip working copy update if untracked files are
+                               present.| ],
     $max_conns_option
   ],
   desc => 'checkout/update all projects'
@@ -1170,6 +1172,11 @@ $commands->add(sync => {
 sub cmd_sync
 {
   my ($opts, $command, $cmd) = @_;
+
+  # --ignore-untracked is deprecated, because now the default is to ignore
+  # untracked files. --no-ignore-untracked can be used to disable this
+  # behaviour.
+  $opts->{'ignore-untracked'} = !$opts->{'no-ignore-untracked'};
 
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
 
