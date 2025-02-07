@@ -1512,6 +1512,7 @@ $commands->add(upload => {
     [ 'relax|R',         'Do not abort because of missing change IDs' ],
     [ 'notify=s',        q|Control to whom email notifications are sent:
                            NONE, OWNER, OWNER_REVIEWERS or ALL (default)|, { arg => '<receiver>' } ],
+    [ 'm|message=s',     q|Provide a patch set description.|, { arg => '<message>' } ],
   ],
   desc => 'upload changes for review'
 });

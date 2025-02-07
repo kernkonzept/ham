@@ -6,6 +6,7 @@ use strict;
 use warnings;
 
 use URI;
+use URI::Escape;
 use JSON::PP;
 use File::Spec::Functions qw(catdir);
 use Hammer::Plugin;
@@ -101,6 +102,9 @@ sub upload
   }
   if ($opts->{notify}) {
     push @attrs, "notify=" . uc($opts->{notify});
+  }
+  if ($opts->{message}) {
+    push @attrs, "message=" . URI::Escape::uri_escape($opts->{message});
   }
   push @attrs, @base_attr;
   if (@attrs) {
