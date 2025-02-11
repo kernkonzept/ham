@@ -12,6 +12,8 @@ use File::Path qw(make_path);
 use Git::Repository;
 use Hammer::Project::Status;
 
+sub is_commit_hash { shift =~ /^[0-9a-fA-F]{40}$/ }
+
 #################################
 # Git::Repository::Plugin::KK
 {
@@ -384,7 +386,8 @@ sub sync_checkout
         return 1;
       }
 
-      my $cmd = $self->git->command('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$self->{revision}", {quiet => 1, fatal => [-128 ]});
+      my $dst_br = is_commit_hash($self->{revision}) ? ("revision-" . $self->{revision}) : $self->{revision};
+      my $cmd = $self->git->command('pull', '--ff-only', $self->{_remote}->{name}, "$self->{revision}:$dst_br", {quiet => 1, fatal => [-128 ]});
       $self->handle_output($cmd);
 
       return 1;
@@ -715,7 +718,13 @@ sub sync
 
   $self->hamify_repo;
   $self->add_to_alternates($opts->{reference}) if defined $opts->{reference};
-  return $self->fetch($remote_name);
+
+  # Git commit specified by their hashes have to be fetched explicitly. Ignore all other revisions then.
+  if (is_commit_hash($self->{revision})) {
+    return $self->fetch($remote_name, $self->{revision});
+  } else {
+    return $self->fetch($remote_name);
+  }
 }
 
 

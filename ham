@@ -79,6 +79,18 @@ sub max_conns
   return 8;
 }
 
+sub ham_init_error
+{
+  my $msg = shift;
+  print STDERR <<EOF;
+FATAL ERROR: $msg
+
+To delete the .ham directory and start anew with "ham init", run "ham purge" first.
+EOF
+
+  exit(128);
+}
+
 my $max_conns_option =
   [ 'max-connections|max-conn=i',
     q|set the maximum number of simultaneous connections used
@@ -812,6 +824,7 @@ $commands->add(init => {
     [ 'gerrit-url|g=s', 'URL of the gerrit server used for the manifest', { arg => '<gerrit url>' } ],
     [ 'project|p=s',    'name of the manifest project (at the gerrit server)', { arg => '<project name>' } ],
     [ 'branch|br|b=s',    'branch in the manifest repository. The branch will also be used as default revision', { arg => '<branch name>' } ],
+    [ 'revision|r=s', 'commit hash to be used in the manifest repository. Not compatible with --branch', { arg => '<commit hash>' } ],
     [ 'type=s', 'Set the type of the manifest repository management system (default gerrit)', { arg => '<repo type>' } ],
     [ 'file|f|m=s', 'set the name of the manifest file. If neither --url nor --gerrit-url is given this parameter will be treated as a local path.', { arg => '<manifest>' } ],
     [ 'default-revision=s', 'use this branch as default revision instead of the value from --branch (or the default branch of the manifest repository in case --branch is not specified)', { arg => '<default revision>' } ],
@@ -834,7 +847,7 @@ sub split_manifest_url
   my $opt = shift;
 
   my $manifest_info = {
-    revision => $opt->{branch},
+    revision => $opt->{revision} // $opt->{branch},
     type     => $opt->{type},
   };
 
@@ -887,6 +900,12 @@ sub init_local_manifests
 
       my $path = ".ham/local_manifests_repos/" . $name;
       my $revision = (defined($branch) && $branch ne "") ? $branch : $opts->{'branch'};
+
+      if (!defined($revision))
+        {
+          ham_init_error "Local manifest value '$opt' is missing a branch or revision.";
+        }
+
       my $prj;
 
       if (exists $local_manifest_repo_lookup{$url . "\0" . $revision})
@@ -999,23 +1018,18 @@ EOF
   exit 1 if $error;
 }
 
-sub ham_init_error
-{
-  my $msg = shift;
-  print STDERR <<EOF;
-FATAL ERROR: $msg
-
-To delete the .ham directory and start anew with "ham init", run "ham purge" first.
-EOF
-
-  exit(128);
-}
 
 sub cmd_init
 {
   my ($opt, $command, $cmd) = @_;
   my $repo_dat_src = $opt->{file};
   my $repodir = get_repo_dir(1);
+
+  if (defined($opt->{branch}) && defined($opt->{revision}))
+    {
+      print STDERR "ERROR: --branch and --revision are mutually exclusive";
+      return 1;
+    }
 
   my $manifest_info = split_manifest_url($opt);
 
@@ -1102,7 +1116,8 @@ sub cmd_init
     print $u encode_json($manifest_info), "\n";
     close $u;
 
-    $opt->{branch} ||= $manifest->git->rev_parse('--abbrev-ref', 'HEAD');
+    $opt->{branch} ||= $manifest->git->rev_parse('--abbrev-ref', 'HEAD')
+      unless defined $opt->{revision};
 
     init_local_manifests($opt);
 
