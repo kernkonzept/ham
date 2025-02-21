@@ -1027,7 +1027,7 @@ sub cmd_init
 
   if (defined($opt->{branch}) && defined($opt->{revision}))
     {
-      print STDERR "ERROR: --branch and --revision are mutually exclusive";
+      print STDERR "ERROR: --branch and --revision are mutually exclusive\n";
       return 1;
     }
 
