@@ -841,6 +841,29 @@ $commands->add(init => {
   desc => "initialize $prog meta project in the current directory"
 });
 
+sub translate_remote_to_url
+{
+  my ($remote) = @_;
+
+  # Detected a scheme, must be a proper url
+  # See https://www.rfc-editor.org/rfc/rfc3986
+  if ($remote =~ m#^[a-z][a-z0-9+.-]*://#i)
+    {
+      return $remote;
+    }
+  ## SCP-style paths
+  # (user@)host:path/to/repo
+  elsif ($remote =~ m#^([^/:]+):(.+)$#)
+    {
+      my ($host,$path) = ($1,$2);
+      $path =~ s#^/##;
+      return "ssh://$host/$path";
+    }
+  else
+    {
+      return $remote;
+    }
+}
 
 sub split_manifest_url
 {
@@ -853,10 +876,10 @@ sub split_manifest_url
 
   if (defined $opt->{url}) {
     ($manifest_info->{project} = $opt->{url}) =~ s|^.*/||g;
-    $manifest_info->{url} = $opt->{url};
+    $manifest_info->{url} = translate_remote_to_url($opt->{url});
   } elsif (defined $opt->{'gerrit-url'} and defined $opt->{project}) {
     $manifest_info->{project} = $opt->{project};
-    $manifest_info->{url} = $opt->{'gerrit-url'} . "/" . $opt->{project};
+    $manifest_info->{url} = translate_remote_to_url($opt->{'gerrit-url'}) . "/" . $opt->{project};
   }
 
   return $manifest_info;
