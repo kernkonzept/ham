@@ -720,7 +720,8 @@ sub sync
   $self->add_to_alternates($opts->{reference}) if defined $opts->{reference};
 
   # Git commit specified by their hashes have to be fetched explicitly. Ignore all other revisions then.
-  if (is_commit_hash($self->{revision})) {
+  # undefined revisions happen if HEAD is supposed to be fetched.
+  if (defined($self->{revision}) && is_commit_hash($self->{revision})) {
     return $self->fetch($remote_name, $self->{revision});
   } else {
     return $self->fetch($remote_name);
