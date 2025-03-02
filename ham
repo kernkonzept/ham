@@ -654,11 +654,40 @@ sub foreach_prj(&@)
 
 ####### list projects #################################
 $commands->add(list => {
-  cmd  => sub { foreach_prj { print "$_->{name} $_->{path}\n"; 0; }; },
-  syn  => '%c',
+  cmd  => \&cmd_list,
+  syn  => [
+    '%c %o',
+    [ 'format|f=s' , 'specify format. One of: text, json', { arg => "<format>" } ],
+    [ 'absolute|a' , 'make paths absolute', {} ],
+  ],
   desc => "list all projects managed by $prog"
 });
 
+sub cmd_list {
+  my ($opt, $command, $cmd) = @_;
+
+  my $format = $opt->{format} // "text";
+  my @projects = map { {
+    name => $_->{name},
+    path => $opt->{absolute} ? File::Spec->catdir(repo_base(), $_->{path}) : $_->{path},
+  } } @{sorted_and_filtered_projects()};
+
+  if ($format eq "json")
+    {
+      print encode_json({
+        map { $_->{name} => $_->{path} } @projects
+      });
+    }
+  elsif ($format eq "text")
+    {
+      print "$_->{name} $_->{path}\n" foreach @projects;
+    }
+  else
+    {
+      print STDERR "Unknown format: $format\n";
+      return 1;
+    }
+}
 
 ###### initialize managed directory ####################
 
