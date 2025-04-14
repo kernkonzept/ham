@@ -895,6 +895,27 @@ sub init_local_manifests
   exit 1 if $error;
 }
 
+sub update_default_revision
+{
+  my ($opt) = @_;
+
+  my $defrevfile = local_default_revision();
+  my $default_revision = $opt->{'default-revision'} || $opt->{'branch'};
+
+  if ($default_revision)
+    {
+      print "Setting up default revision: $default_revision\n";
+
+      my $defrev = Hammer::Manifest->new();
+      $defrev->set_default({revision => $default_revision});
+      $defrev->writefile($defrevfile);
+    }
+  elsif (-f $defrevfile)
+    {
+      print "Removing default revision\n";
+      unlink $defrevfile
+    }
+}
 
 sub cmd_init
 {
@@ -939,12 +960,18 @@ sub cmd_init
                    "'$manifest_info->{revision}'\n";
       $i->{revision} = $manifest_info->{revision};
       write_ham_json_file($i, 'manifests_json');
+
+      update_default_revision($opt);
+
     } elsif ($i->{revision} ne $manifest_info->{revision}) {
       print STDERR "warning: updating manifest branch from ".
                    "'$i->{revision}' to '$manifest_info->{revision}'\n";
       $i->{revision} = $manifest_info->{revision};
       write_ham_json_file($i, 'manifests_json');
+
+      update_default_revision($opt);
     }
+
     return 0;
   }
 
@@ -1011,15 +1038,7 @@ sub cmd_init
     close $rd;
   }
 
-  my $default_revision = $opt->{'default-revision'} || $opt->{'branch'};
-  if ($default_revision)
-    {
-      print "Setting up default revision: $default_revision\n";
-
-      my $defrev = Hammer::Manifest->new();
-      $defrev->set_default({revision => $default_revision});
-      $defrev->writefile(local_default_revision());
-    }
+  update_default_revision($opt);
 
   return 0;
 }
