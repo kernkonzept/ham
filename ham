@@ -781,7 +781,8 @@ sub init_local_manifests
       $symlink  ||= sprintf('%04d-%s', $i, $file);
 
       my $path = ".ham/local_manifests_repos/" . $name;
-      my $revision = (defined($branch) && $branch ne "") ? $branch : $opts->{'branch'};
+      my $fixed_revision = (defined($branch) && $branch ne "") ? 1 : 0;
+      my $revision = $fixed_revision ? $branch : $opts->{'branch'};
 
       if (!defined($revision))
         {
@@ -790,9 +791,9 @@ sub init_local_manifests
 
       my $prj;
 
-      if (exists $local_manifest_repo_lookup{$url . "\0" . $revision})
+      if (exists $local_manifest_repo_lookup{$url . "\0" . $revision . "\0" . $fixed_revision})
         {
-          $prj = $local_manifest_repo_lookup{$url . "\0" . $revision};
+          $prj = $local_manifest_repo_lookup{$url . "\0" . $revision . "\0" . $fixed_revision};
           $path = $prj->{path};
         }
       else
@@ -808,14 +809,14 @@ sub init_local_manifests
             },
             url => $url,
             revision => $revision,
-            fixed_revision => 1,
+            fixed_revision => $fixed_revision,
             is_manifest => 1,
             keep => 1,
           }, root => realpath('.'), stderr => $err, stdout => $info);
 
           push @lm_projects, $prj;
 
-          $local_manifest_repo_lookup{$url . "\0" . $revision} = $prj;
+          $local_manifest_repo_lookup{$url . "\0" . $revision . "\0" . $fixed_revision} = $prj;
         }
 
       push @symlinks, {
