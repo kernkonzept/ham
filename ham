@@ -1088,6 +1088,9 @@ sub cmd_sync
 
   my $q = Hammer::Process_queue->new(max => max_conns($opts));
 
+  my @manifest_err;
+  my @manifest_info;
+
   # update manifest repo and local manifest repos first
   unless ($opts->{'exclude-manifest'}) {
     my $projects_tmp = load_projects();
@@ -1104,6 +1107,12 @@ sub cmd_sync
     $q->work;
 
     $_->prepare($opts) foreach @manifest_repos;
+
+    # Stash manifest infos & errors, so these are presented in a joint fashion at the end.
+    @manifest_err = @$err;
+    @manifest_info = @$info;
+    @$err = ();
+    @$info = ();
   }
 
   place_commit_msg_hook();
@@ -1122,6 +1131,10 @@ sub cmd_sync
     $q->queue(sub { $r->sync($opts); });
   }
   $q->work;
+
+  # Unstash previously stashed manifest errors and infos if any
+  unshift @$err, @manifest_err;
+  unshift @$info, @manifest_info;
 
   print_errors(exit => 128);
 
