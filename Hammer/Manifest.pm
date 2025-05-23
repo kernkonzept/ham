@@ -42,6 +42,8 @@ sub new_from_file
 
   my $self = $class->new(filepath => $file);
 
+  my $current_project = undef;
+
   my $parser = XML::Parser->new(
     Handlers => {
       Start => sub {
@@ -49,32 +51,78 @@ sub new_from_file
         my $tagname = shift;
         my %attr = @_;
 
-        # Ignore root element
-        return unless $parser->context;
-
-        if ($tagname =~ /^(extend-|remove-|)(project|remote)$/)
+        if (!$parser->context) # Ignore root element
           {
-            my $type = $2;
+            die "$file: Root element should be called 'manifest'"
+              unless $tagname eq "manifest";
 
-            die "$file: Attribute 'name' missing in <$tagname ...>\n"
-              unless exists $attr{name};
-
-            my $name = $attr{name};
-            $name //= $attr{project_name} if $type eq "project";
-
-            die "$file: Multiple <$tagname ...> with named '$name'\n"
-              if exists $self->{$tagname}->{$name};
-
-            $self->{$tagname}->{$name} = { %attr };
+            return;
           }
-        elsif ($tagname eq "default")
+        elsif ($current_project) # Within project tag
           {
-            $self->set_default(\%attr);
+            if ($tagname eq "linkfile")
+              {
+                die "$file: <linkfile> not supported";
+              }
+            elsif ($tagname eq "copyfile")
+              {
+                die "$file: <copyfile> not supported";
+              }
+            elsif ($tagname eq "project")
+              {
+                die "$file: <project> in <project> not supported.\n";
+              }
+            elsif ($tagname eq "annotation")
+              {
+                die "$file: <annotation> not supported.\n";
+              }
           }
-        else
+        else # Outside of project tag
           {
-            die "$file: Unexpected <$tagname ...>\n";
+            if ($tagname =~ /^(extend-|remove-|)(project|remote)$/)
+              {
+                my $type = $2;
+
+                die "$file: Attribute 'name' missing in <$tagname ...>\n"
+                  unless exists $attr{name};
+
+                my $name = $attr{name};
+                $name //= $attr{project_name} if $type eq "project";
+
+                die "$file: Multiple <$tagname ...> with named '$name'\n"
+                  if exists $self->{$tagname}->{$name};
+
+                $current_project = $name if $tagname eq "project";
+
+                $self->{$tagname}->{$name} = { %attr };
+                return;
+              }
+            elsif ($tagname eq "default")
+              {
+                $self->set_default(\%attr);
+                return;
+              }
+            elsif ($tagname eq "repo-hooks")
+              {
+                die "$file: <repo-hooks> not supported.";
+              }
+            elsif ($tagname eq "include")
+              {
+                die "$file: <include> not supported.";
+              }
+            elsif ($tagname eq "notice")
+              {
+                # Ignore notice
+                return;
+              }
           }
+
+        die "$file: Unexpected tag <$tagname ...>\n";
+      },
+      End => sub {
+        my ($parser, $tagname) = @_;
+
+        $current_project = undef if $tagname eq "project";
       },
     },
   );
