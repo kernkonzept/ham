@@ -1041,6 +1041,9 @@ sub cmd_init
 
   update_default_revision($opt);
 
+
+  print "Initialized ham directory.\n";
+
   return 0;
 }
 
