@@ -171,7 +171,13 @@ sub extend
         my $keyattr = findkey($removal, @keyattrs);
         die "$otherfp: Node <remove-$type ...> is missing one of these attributes: " . join(", ", @keyattrs)
           unless defined $keyattr;
-        delete $self->{$type}{$removal->{$keyattr}};
+
+        my $name = $removal->{$keyattr};
+
+        die "$otherfp: Node <remove-$type ...> tries to remove non-existent $type '$name'"
+          unless exists $self->{$type}{$name};
+
+        delete $self->{$type}{$name};
       }
 
     # Add plain project/remotes next
@@ -199,6 +205,9 @@ sub extend
           unless defined $keyattr;
 
         my $name = $extension->{$keyattr};
+
+        die "$otherfp: Node <extend-$type ...> tries to extend non-existent $type '$name'"
+          unless exists $self->{$type}{$name};
 
         $self->{$type}{$name} = {
           %{$self->{$type}{$name}},
