@@ -445,8 +445,19 @@ sub load_projects
     return plain_git_project();
   }
 
+  my $manifest = Hammer::Manifest->new();
+
+  ### Local default revision
+  # contains default revision introduced during ham init
+  my $ldr_path = local_default_revision();
+  if (-f $ldr_path) {
+    my $ldr_manifest = Hammer::Manifest->new_from_file($ldr_path);
+    $manifest->extend($ldr_manifest);
+  }
+
   ### Main manifest
-  my $manifest = Hammer::Manifest->new_from_file(repo_manifest());
+  my $main_manifest = Hammer::Manifest->new_from_file(repo_manifest());
+  $manifest->extend($main_manifest);
 
   ### Local manifest index
   # contains projects (git repositories) that contain local manifests
@@ -479,14 +490,6 @@ sub load_projects
       my $lm_manifest = Hammer::Manifest->new_from_file($lm_path);
       $manifest->extend($lm_manifest);
     }
-  }
-
-  ### Local default revision
-  # contains default revision introduced during ham init
-  my $ldr_path = local_default_revision();
-  if (-f $ldr_path) {
-    my $ldr_manifest = Hammer::Manifest->new_from_file($ldr_path);
-    $manifest->extend($ldr_manifest);
   }
 
   while (my ($n, $r) = each %{$manifest->{remote}}) {
