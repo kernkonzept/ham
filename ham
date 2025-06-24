@@ -735,7 +735,7 @@ sub split_manifest_url
 
 sub init_local_manifests
 {
-  my ($opts) = @_;
+  my ($opts, $manifest_branch) = @_;
 
   my $error = 0;
 
@@ -771,7 +771,7 @@ sub init_local_manifests
 
       my $path = ".ham/local_manifests_repos/" . $name;
       my $fixed_revision = (defined($branch) && $branch ne "") ? 1 : 0;
-      my $revision = $fixed_revision ? $branch : $opts->{'branch'};
+      my $revision = $fixed_revision ? $branch : $manifest_branch;
 
       if (!defined($revision))
         {
@@ -1010,10 +1010,14 @@ sub cmd_init
     print $u encode_json($manifest_info), "\n";
     close $u;
 
-    $opt->{branch} ||= $manifest->git->rev_parse('--abbrev-ref', 'HEAD')
-      unless defined $opt->{revision};
+    my $manifest_branch;
+    unless (defined $opt->{revision})
+      {
+        $manifest_branch = $opt->{branch};
+        $manifest_branch ||= $manifest->git->rev_parse('--abbrev-ref', 'HEAD');
+      }
 
-    init_local_manifests($opt);
+    init_local_manifests($opt, $manifest_branch);
 
   } else {
     # use a local file as manifest and copy it
