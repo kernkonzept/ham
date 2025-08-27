@@ -106,6 +106,9 @@ sub upload
   if ($opts->{message}) {
     push @attrs, "message=" . URI::Escape::uri_escape($opts->{message});
   }
+  if ($opts->{wip}) {
+    push @attrs, "wip";
+  }
   push @attrs, @base_attr;
   if (@attrs) {
     $dst_ref .= "%".join(',', @attrs);
