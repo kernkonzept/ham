@@ -79,9 +79,10 @@ sub new_from_file
           }
         else # Outside of project tag
           {
-            if ($tagname =~ /^(extend-|remove-|)(project|remote)$/)
+            if ($tagname =~ /^((extend|remove)-)?(project|remote)$/)
               {
-                my $type = $2;
+                my $op = $2 // "";
+                my $type = $3;
 
                 die "$file: Attribute 'name' missing in <$tagname ...>\n"
                   unless exists $attr{name};
@@ -93,6 +94,14 @@ sub new_from_file
                   if exists $self->{$tagname}->{$name};
 
                 $current_project = $name if $tagname eq "project";
+
+                if ($op eq "remove")
+                  {
+                    $attr{optional} //= "false";
+
+                    die "Invalid value for attribute 'optional', must be 'true' or 'false'"
+                      unless $attr{optional} =~ /^(true|false)$/;
+                  }
 
                 $self->{$tagname}->{$name} = { %attr };
                 return;
@@ -222,10 +231,14 @@ sub extend
 
         my $name = $removal->{$keyattr};
 
-        die "$otherfp: Node <remove-$type ...> tries to remove non-existent $type '$name'"
-          unless exists $self->{$type}{$name};
-
-        delete $self->{$type}{$name};
+        if (exists($self->{$type}{$name}))
+          {
+            delete $self->{$type}{$name};
+          }
+        elsif ($removal->{optional} eq "false")
+          {
+            die "$otherfp: Node <remove-$type ...> tries to remove non-existent $type '$name'";
+          }
       }
 
     # Add plain project/remotes next
