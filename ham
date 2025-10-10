@@ -51,10 +51,11 @@ if (-t STDOUT) {
   *colored = sub { return $_[0]; }
 }
 
-if ($ARGV[0] eq "-C")
+if (defined $ARGV[0] and $ARGV[0] eq "-C")
   {
     (my $C, my $path, @ARGV) = @ARGV;
-    chdir($path) or die "Could not enter directory '$path'\n";
+    defined $path or die "No path given for -C";
+    chdir($path) or die "Could not enter directory '$path'";
   }
 
 # add gerrit support per default
