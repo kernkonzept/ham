@@ -15,7 +15,7 @@ in multiple repositories.
 
 On Debian-based systems, install:
 
-    $ apt-get install libgit-repository-perl libxml-parser-perl liburi-perl
+    $ apt-get install libgit-repository-perl libxml-parser-perl liburi-perl libpar-packer-perl make
 
 On Fedora or RHEL you need to install:
 
@@ -30,6 +30,11 @@ On Arch Linux, these packages need to be installed from the AUR by a method of y
 
     $ pacman -S perl-xml-parser perl-uri
     $ yay -S perl-git-repository
+
+## Installation
+
+Run `make` and add the folder to your PATH.
+
 
 ## SSH Authentication
 
