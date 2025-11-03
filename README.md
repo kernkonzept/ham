@@ -19,22 +19,29 @@ On Debian-based systems, install:
 
 On Fedora or RHEL you need to install:
 
-    $ dnf install perl-Git-Repository-Plugin-AUTOLOAD perl-URI perl-CPAN perl-Test perl-File-pushd perl-XML-Parser
+    $ dnf install perl-Git-Repository-Plugin-AUTOLOAD perl-URI perl-CPAN perl-Test perl-File-pushd perl-XML-Parser perl-PAR-Packer make
 
 On openSUSE or SLE you need to install:
 
-    $ zypper in git make perl perl-base perl-File-pushd perl-Git perl-Pod-Coverage-TrustPod perl-Test-Base perl-Test-Pod perl-Test-Pod-Coverage perl-URI perl-YAML perl-XML-Parser
+    $ zypper in git make perl perl-base perl-File-pushd perl-Git perl-Pod-Coverage-TrustPod perl-Test-Base perl-Test-Pod perl-Test-Pod-Coverage perl-URI perl-YAML perl-XML-Parser perl-PAR-Packer
     $ cpan install Git::Repository
 
 On Arch Linux, these packages need to be installed from the AUR by a method of your choice:
 
-    $ pacman -S perl-xml-parser perl-uri
+    $ pacman -S perl-xml-parser perl-uri perl-par-packer make
     $ yay -S perl-git-repository
 
 ## Installation
 
-Run `make` and add the folder to your PATH.
+### Variant 1: Simple
 
+Add this folder to your PATH environment variable.
+
+### Variant 2: Packed
+
+1. Run `make`
+2. Copy the generated `ham.pl` as `ham` into a folder of your liking
+   e.g. /usr/local/bin
 
 ## SSH Authentication
 
