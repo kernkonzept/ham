@@ -512,7 +512,18 @@ sub load_projects
     $manifest_url = URI->new("file:///");
   }
 
+  my %path_occupied_by;
+
   foreach my $p (values %projects) {
+    my $path = $p->abs_path();
+
+    if (my $o = $path_occupied_by{$path})
+      {
+        die "FATAL ERROR: Project '$p->{name}' and '$o->{name}' share the same path '$path'. Aborting.\n";
+      }
+
+    $path_occupied_by{$path} = $p;
+
     # Manifest repositories have real remote urls in _remote. They don't need
     # adjustments.
     # Exception: Older local manifest repositories have no specific remote set
