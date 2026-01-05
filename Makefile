@@ -8,10 +8,10 @@ all: $(HAM_PL)
 clean:
 	rm -f $(HAM_PL) .ham.d ham.par
 
-ham.par: $(SRC_DIR)/ham
+ham.par: $(SRC_DIR)/ham Makefile
 	pp -vvv $(addprefix-X ,$(EXCLUDE_MODS)) -M Hammer::Changes::Gerrit -p -o $@ $< | grep -E "adding\s+/" | cut -f 4 -d' ' | xargs echo $@: >.ham.d
 
-$(HAM_PL): ham.par $(SRC_DIR)/par-archive
+$(HAM_PL): ham.par $(SRC_DIR)/par-archive Makefile
 	$(SRC_DIR)/par-archive -b -O$@ $<
 
 -include .ham.d
