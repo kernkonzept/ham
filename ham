@@ -1943,7 +1943,6 @@ $commands->add('download-id' => {
           print_download_trace(\@trace);
           return download_id_sync($touched_manifest, $opts);
         }
-        $all_prjs = filter_projects($all_prjs, [ '!', (keys %$changes) ]);
         $recurse = 1;
         $opts->{pull} = 1;
         delete $opts->{'cherry-pick'};
