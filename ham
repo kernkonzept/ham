@@ -1899,8 +1899,8 @@ $commands->add('download-id' => {
     my $recurse = 0;
 
     foreach my $p (values %$all_prjs) {
-      my $head = $p->git->rev_parse('--abbrev-ref', 'HEAD');
-      $p->{current_head} = $head;
+      $p->{current_head} = $p->git->rev_parse('--abbrev-ref', 'HEAD');
+      $p->{current_head_commit} = $p->git->rev_parse('HEAD');
     }
 
     my @trace;
@@ -1931,8 +1931,8 @@ $commands->add('download-id' => {
       foreach my $prj_name (keys %$changes) {
         my $p = $all_prjs->{$prj_name};
         next unless $p->{revision};
-        my @revs = $p->git->run('rev-list', '--max-count', '100', '--sparse',
-                                'FETCH_HEAD', '--not', '--remotes=*/'.$p->{revision},
+        my @revs = $p->git->run('rev-list', 'HEAD', '--not', $p->{current_head_commit},
+                                '--not', '--remotes=*/'.$p->{revision},
                                 '--');
         chomp (@revs);
 
